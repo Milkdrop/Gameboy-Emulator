@@ -1,4 +1,6 @@
 #include <stdint.h>
+#include <stdio.h>
+#include <cstring>
 #ifndef MMU_H
 #define MMU_H
 
@@ -8,7 +10,9 @@ class MMU {
 		uint8_t GetByteAt (uint16_t Address);
 		void SetByteAt (uint16_t Address, uint8_t Value);
 		void SetBytesAt (uint16_t Address, uint8_t* Buffer, size_t BufferSize);
-	
+		
+		uint16_t GetWordAt (uint16_t Address);
+		void SetWordAt (uint16_t Address, uint16_t Value);
 		/* Memory Layout:
 			Interrupt Register:			0xFFFF
 			Internal RAM:				0xFF80
