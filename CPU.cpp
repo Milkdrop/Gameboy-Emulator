@@ -203,86 +203,86 @@ void CPU::Execute (uint8_t Instruction) {
 				case 0x36: SetN (0); SetH (0); SetC (0); SetZ (mmu->GetByteAt (reg_HL) == 0); mmu->SetByteAt (reg_HL, (mmu->GetByteAt (reg_HL) << 4) | (mmu->GetByteAt (reg_HL) >> 4)); break; // SWAP
 				case 0x37: SetN (0); SetH (0); SetC (0); SetZ (*reg_A == 0); *reg_A = (*reg_A << 4) | (*reg_A >> 4); break; // SWAP
 					
-				case 0x38: SetN (0); SetH (0); u8 = *reg_B >> 7; *reg_B <<= 1; *reg_B |= u8; SetC (u8); SetZ (*reg_B == 0); break; // SRL
-				case 0x39: SetN (0); SetH (0); u8 = *reg_C >> 7; *reg_C <<= 1; *reg_C |= u8; SetC (u8); SetZ (*reg_C == 0); break; // SRL
-				case 0x3A: SetN (0); SetH (0); u8 = *reg_D >> 7; *reg_D <<= 1; *reg_D |= u8; SetC (u8); SetZ (*reg_D == 0); break; // SRL
-				case 0x3B: SetN (0); SetH (0); u8 = *reg_E >> 7; *reg_E <<= 1; *reg_E |= u8; SetC (u8); SetZ (*reg_E == 0); break; // SRL
-				case 0x3C: SetN (0); SetH (0); u8 = *reg_H >> 7; *reg_H <<= 1; *reg_H |= u8; SetC (u8); SetZ (*reg_H == 0); break; // SRL
-				case 0x3D: SetN (0); SetH (0); u8 = *reg_L >> 7; *reg_L <<= 1; *reg_L |= u8; SetC (u8); SetZ (*reg_L == 0); break; // SRL
-				case 0x3E: SetN (0); SetH (0); u8 = mmu->GetByteAt (reg_HL) >> 7; mmu->SetByteAt (reg_HL, (mmu->GetByteAt (reg_HL) << 1) | u8); SetC (u8); SetZ (mmu->GetByteAt (reg_HL) == 0); break; // SRL
-				case 0x3F: SetN (0); SetH (0); u8 = *reg_A >> 7; *reg_A <<= 1; *reg_A |= u8; SetC (u8); SetZ (*reg_A == 0); break; // SRL
+				case 0x38: SetN (0); SetH (0); u8 = *reg_B & 1; *reg_B >>= 1; SetC (u8); SetZ (*reg_B == 0); break; // SRL
+				case 0x39: SetN (0); SetH (0); u8 = *reg_C & 1; *reg_C >>= 1; SetC (u8); SetZ (*reg_C == 0); break; // SRL
+				case 0x3A: SetN (0); SetH (0); u8 = *reg_D & 1; *reg_D >>= 1; SetC (u8); SetZ (*reg_D == 0); break; // SRL
+				case 0x3B: SetN (0); SetH (0); u8 = *reg_E & 1; *reg_E >>= 1; SetC (u8); SetZ (*reg_E == 0); break; // SRL
+				case 0x3C: SetN (0); SetH (0); u8 = *reg_H & 1; *reg_H >>= 1; SetC (u8); SetZ (*reg_H == 0); break; // SRL
+				case 0x3D: SetN (0); SetH (0); u8 = *reg_L & 1; *reg_L >>= 1; SetC (u8); SetZ (*reg_L == 0); break; // SRL
+				case 0x3E: SetN (0); SetH (0); u8 = mmu->GetByteAt (reg_HL) & 1; mmu->SetByteAt (reg_HL, mmu->GetByteAt (reg_HL) >> 1); SetC (u8); SetZ (mmu->GetByteAt (reg_HL) == 0); break; // SRL
+				case 0x3F: SetN (0); SetH (0); u8 = *reg_A & 1; *reg_A >>= 1; SetC (u8); SetZ (*reg_A == 0); break; // SRL
 				
-				case 0x40: SetZ ((*reg_B & (1 << 0)) != 0); SetN (0); SetH (1); break; // BIT
-				case 0x41: SetZ ((*reg_C & (1 << 0)) != 0); SetN (0); SetH (1); break; // BIT
-				case 0x42: SetZ ((*reg_D & (1 << 0)) != 0); SetN (0); SetH (1); break; // BIT
-				case 0x43: SetZ ((*reg_E & (1 << 0)) != 0); SetN (0); SetH (1); break; // BIT
-				case 0x44: SetZ ((*reg_H & (1 << 0)) != 0); SetN (0); SetH (1); break; // BIT
-				case 0x45: SetZ ((*reg_L & (1 << 0)) != 0); SetN (0); SetH (1); break; // BIT
-				case 0x46: SetZ ((mmu->GetByteAt (reg_HL) & (1 << 0)) != 0); SetN (0); SetH (1); break; // BIT
-				case 0x47: SetZ ((*reg_A & (1 << 0)) != 0); SetN (0); SetH (1); break; // BIT
+				case 0x40: SetZ ((*reg_B & (1 << 0)) == 0); SetN (0); SetH (1); break; // BIT
+				case 0x41: SetZ ((*reg_C & (1 << 0)) == 0); SetN (0); SetH (1); break; // BIT
+				case 0x42: SetZ ((*reg_D & (1 << 0)) == 0); SetN (0); SetH (1); break; // BIT
+				case 0x43: SetZ ((*reg_E & (1 << 0)) == 0); SetN (0); SetH (1); break; // BIT
+				case 0x44: SetZ ((*reg_H & (1 << 0)) == 0); SetN (0); SetH (1); break; // BIT
+				case 0x45: SetZ ((*reg_L & (1 << 0)) == 0); SetN (0); SetH (1); break; // BIT
+				case 0x46: SetZ ((mmu->GetByteAt (reg_HL) & (1 << 0)) == 0); SetN (0); SetH (1); break; // BIT
+				case 0x47: SetZ ((*reg_A & (1 << 0)) == 0); SetN (0); SetH (1); break; // BIT
 					
-				case 0x48: SetZ ((*reg_B & (1 << 1)) != 0); SetN (0); SetH (1); break; // BIT
-				case 0x49: SetZ ((*reg_C & (1 << 1)) != 0); SetN (0); SetH (1); break; // BIT
-				case 0x4A: SetZ ((*reg_D & (1 << 1)) != 0); SetN (0); SetH (1); break; // BIT
-				case 0x4B: SetZ ((*reg_E & (1 << 1)) != 0); SetN (0); SetH (1); break; // BIT
-				case 0x4C: SetZ ((*reg_H & (1 << 1)) != 0); SetN (0); SetH (1); break; // BIT
-				case 0x4D: SetZ ((*reg_L & (1 << 1)) != 0); SetN (0); SetH (1); break; // BIT
-				case 0x4E: SetZ ((mmu->GetByteAt (reg_HL) & (1 << 1)) != 0); SetN (0); SetH (1); break; // BIT
-				case 0x4F: SetZ ((*reg_A & (1 << 1)) != 0); SetN (0); SetH (1); break; // BIT
+				case 0x48: SetZ ((*reg_B & (1 << 1)) == 0); SetN (0); SetH (1); break; // BIT
+				case 0x49: SetZ ((*reg_C & (1 << 1)) == 0); SetN (0); SetH (1); break; // BIT
+				case 0x4A: SetZ ((*reg_D & (1 << 1)) == 0); SetN (0); SetH (1); break; // BIT
+				case 0x4B: SetZ ((*reg_E & (1 << 1)) == 0); SetN (0); SetH (1); break; // BIT
+				case 0x4C: SetZ ((*reg_H & (1 << 1)) == 0); SetN (0); SetH (1); break; // BIT
+				case 0x4D: SetZ ((*reg_L & (1 << 1)) == 0); SetN (0); SetH (1); break; // BIT
+				case 0x4E: SetZ ((mmu->GetByteAt (reg_HL) & (1 << 1)) == 0); SetN (0); SetH (1); break; // BIT
+				case 0x4F: SetZ ((*reg_A & (1 << 1)) == 0); SetN (0); SetH (1); break; // BIT
 				
-				case 0x50: SetZ ((*reg_B & (1 << 2)) != 0); SetN (0); SetH (1); break; // BIT
-				case 0x51: SetZ ((*reg_C & (1 << 2)) != 0); SetN (0); SetH (1); break; // BIT
-				case 0x52: SetZ ((*reg_D & (1 << 2)) != 0); SetN (0); SetH (1); break; // BIT
-				case 0x53: SetZ ((*reg_E & (1 << 2)) != 0); SetN (0); SetH (1); break; // BIT
-				case 0x54: SetZ ((*reg_H & (1 << 2)) != 0); SetN (0); SetH (1); break; // BIT
-				case 0x55: SetZ ((*reg_L & (1 << 2)) != 0); SetN (0); SetH (1); break; // BIT
-				case 0x56: SetZ ((mmu->GetByteAt (reg_HL) & (1 << 2)) != 0); SetN (0); SetH (1); break; // BIT
-				case 0x57: SetZ ((*reg_A & (1 << 2)) != 0); SetN (0); SetH (1); break; // BIT
+				case 0x50: SetZ ((*reg_B & (1 << 2)) == 0); SetN (0); SetH (1); break; // BIT
+				case 0x51: SetZ ((*reg_C & (1 << 2)) == 0); SetN (0); SetH (1); break; // BIT
+				case 0x52: SetZ ((*reg_D & (1 << 2)) == 0); SetN (0); SetH (1); break; // BIT
+				case 0x53: SetZ ((*reg_E & (1 << 2)) == 0); SetN (0); SetH (1); break; // BIT
+				case 0x54: SetZ ((*reg_H & (1 << 2)) == 0); SetN (0); SetH (1); break; // BIT
+				case 0x55: SetZ ((*reg_L & (1 << 2)) == 0); SetN (0); SetH (1); break; // BIT
+				case 0x56: SetZ ((mmu->GetByteAt (reg_HL) & (1 << 2)) == 0); SetN (0); SetH (1); break; // BIT
+				case 0x57: SetZ ((*reg_A & (1 << 2)) == 0); SetN (0); SetH (1); break; // BIT
 					
-				case 0x58: SetZ ((*reg_B & (1 << 3)) != 0); SetN (0); SetH (1); break; // BIT
-				case 0x59: SetZ ((*reg_C & (1 << 3)) != 0); SetN (0); SetH (1); break; // BIT
-				case 0x5A: SetZ ((*reg_D & (1 << 3)) != 0); SetN (0); SetH (1); break; // BIT
-				case 0x5B: SetZ ((*reg_E & (1 << 3)) != 0); SetN (0); SetH (1); break; // BIT
-				case 0x5C: SetZ ((*reg_H & (1 << 3)) != 0); SetN (0); SetH (1); break; // BIT
-				case 0x5D: SetZ ((*reg_L & (1 << 3)) != 0); SetN (0); SetH (1); break; // BIT
-				case 0x5E: SetZ ((mmu->GetByteAt (reg_HL) & (1 << 3)) != 0); SetN (0); SetH (1); break; // BIT
-				case 0x5F: SetZ ((*reg_A & (1 << 3)) != 0); SetN (0); SetH (1); break; // BIT
+				case 0x58: SetZ ((*reg_B & (1 << 3)) == 0); SetN (0); SetH (1); break; // BIT
+				case 0x59: SetZ ((*reg_C & (1 << 3)) == 0); SetN (0); SetH (1); break; // BIT
+				case 0x5A: SetZ ((*reg_D & (1 << 3)) == 0); SetN (0); SetH (1); break; // BIT
+				case 0x5B: SetZ ((*reg_E & (1 << 3)) == 0); SetN (0); SetH (1); break; // BIT
+				case 0x5C: SetZ ((*reg_H & (1 << 3)) == 0); SetN (0); SetH (1); break; // BIT
+				case 0x5D: SetZ ((*reg_L & (1 << 3)) == 0); SetN (0); SetH (1); break; // BIT
+				case 0x5E: SetZ ((mmu->GetByteAt (reg_HL) & (1 << 3)) == 0); SetN (0); SetH (1); break; // BIT
+				case 0x5F: SetZ ((*reg_A & (1 << 3)) == 0); SetN (0); SetH (1); break; // BIT
 				
-				case 0x60: SetZ ((*reg_B & (1 << 4)) != 0); SetN (0); SetH (1); break; // BIT
-				case 0x61: SetZ ((*reg_C & (1 << 4)) != 0); SetN (0); SetH (1); break; // BIT
-				case 0x62: SetZ ((*reg_D & (1 << 4)) != 0); SetN (0); SetH (1); break; // BIT
-				case 0x63: SetZ ((*reg_E & (1 << 4)) != 0); SetN (0); SetH (1); break; // BIT
-				case 0x64: SetZ ((*reg_H & (1 << 4)) != 0); SetN (0); SetH (1); break; // BIT
-				case 0x65: SetZ ((*reg_L & (1 << 4)) != 0); SetN (0); SetH (1); break; // BIT
-				case 0x66: SetZ ((mmu->GetByteAt (reg_HL) & (1 << 4)) != 0); SetN (0); SetH (1); break; // BIT
-				case 0x67: SetZ ((*reg_A & (1 << 4)) != 0); SetN (0); SetH (1); break; // BIT
+				case 0x60: SetZ ((*reg_B & (1 << 4)) == 0); SetN (0); SetH (1); break; // BIT
+				case 0x61: SetZ ((*reg_C & (1 << 4)) == 0); SetN (0); SetH (1); break; // BIT
+				case 0x62: SetZ ((*reg_D & (1 << 4)) == 0); SetN (0); SetH (1); break; // BIT
+				case 0x63: SetZ ((*reg_E & (1 << 4)) == 0); SetN (0); SetH (1); break; // BIT
+				case 0x64: SetZ ((*reg_H & (1 << 4)) == 0); SetN (0); SetH (1); break; // BIT
+				case 0x65: SetZ ((*reg_L & (1 << 4)) == 0); SetN (0); SetH (1); break; // BIT
+				case 0x66: SetZ ((mmu->GetByteAt (reg_HL) & (1 << 4)) == 0); SetN (0); SetH (1); break; // BIT
+				case 0x67: SetZ ((*reg_A & (1 << 4)) == 0); SetN (0); SetH (1); break; // BIT
 					
-				case 0x68: SetZ ((*reg_B & (1 << 5)) != 0); SetN (0); SetH (1); break; // BIT
-				case 0x69: SetZ ((*reg_C & (1 << 5)) != 0); SetN (0); SetH (1); break; // BIT
-				case 0x6A: SetZ ((*reg_D & (1 << 5)) != 0); SetN (0); SetH (1); break; // BIT
-				case 0x6B: SetZ ((*reg_E & (1 << 5)) != 0); SetN (0); SetH (1); break; // BIT
-				case 0x6C: SetZ ((*reg_H & (1 << 5)) != 0); SetN (0); SetH (1); break; // BIT
-				case 0x6D: SetZ ((*reg_L & (1 << 5)) != 0); SetN (0); SetH (1); break; // BIT
-				case 0x6E: SetZ ((mmu->GetByteAt (reg_HL) & (1 << 5)) != 0); SetN (0); SetH (1); break; // BIT
-				case 0x6F: SetZ ((*reg_A & (1 << 5)) != 0); SetN (0); SetH (1); break; // BIT
+				case 0x68: SetZ ((*reg_B & (1 << 5)) == 0); SetN (0); SetH (1); break; // BIT
+				case 0x69: SetZ ((*reg_C & (1 << 5)) == 0); SetN (0); SetH (1); break; // BIT
+				case 0x6A: SetZ ((*reg_D & (1 << 5)) == 0); SetN (0); SetH (1); break; // BIT
+				case 0x6B: SetZ ((*reg_E & (1 << 5)) == 0); SetN (0); SetH (1); break; // BIT
+				case 0x6C: SetZ ((*reg_H & (1 << 5)) == 0); SetN (0); SetH (1); break; // BIT
+				case 0x6D: SetZ ((*reg_L & (1 << 5)) == 0); SetN (0); SetH (1); break; // BIT
+				case 0x6E: SetZ ((mmu->GetByteAt (reg_HL) & (1 << 5)) == 0); SetN (0); SetH (1); break; // BIT
+				case 0x6F: SetZ ((*reg_A & (1 << 5)) == 0); SetN (0); SetH (1); break; // BIT
 				
-				case 0x70: SetZ ((*reg_B & (1 << 6)) != 0); SetN (0); SetH (1); break; // BIT
-				case 0x71: SetZ ((*reg_C & (1 << 6)) != 0); SetN (0); SetH (1); break; // BIT
-				case 0x72: SetZ ((*reg_D & (1 << 6)) != 0); SetN (0); SetH (1); break; // BIT
-				case 0x73: SetZ ((*reg_E & (1 << 6)) != 0); SetN (0); SetH (1); break; // BIT
-				case 0x74: SetZ ((*reg_H & (1 << 6)) != 0); SetN (0); SetH (1); break; // BIT
-				case 0x75: SetZ ((*reg_L & (1 << 6)) != 0); SetN (0); SetH (1); break; // BIT
-				case 0x76: SetZ ((mmu->GetByteAt (reg_HL) & (1 << 6)) != 0); SetN (0); SetH (1); break; // BIT
-				case 0x77: SetZ ((*reg_A & (1 << 6)) != 0); SetN (0); SetH (1); break; // BIT
+				case 0x70: SetZ ((*reg_B & (1 << 6)) == 0); SetN (0); SetH (1); break; // BIT
+				case 0x71: SetZ ((*reg_C & (1 << 6)) == 0); SetN (0); SetH (1); break; // BIT
+				case 0x72: SetZ ((*reg_D & (1 << 6)) == 0); SetN (0); SetH (1); break; // BIT
+				case 0x73: SetZ ((*reg_E & (1 << 6)) == 0); SetN (0); SetH (1); break; // BIT
+				case 0x74: SetZ ((*reg_H & (1 << 6)) == 0); SetN (0); SetH (1); break; // BIT
+				case 0x75: SetZ ((*reg_L & (1 << 6)) == 0); SetN (0); SetH (1); break; // BIT
+				case 0x76: SetZ ((mmu->GetByteAt (reg_HL) & (1 << 6)) == 0); SetN (0); SetH (1); break; // BIT
+				case 0x77: SetZ ((*reg_A & (1 << 6)) == 0); SetN (0); SetH (1); break; // BIT
 					
-				case 0x78: SetZ ((*reg_B & (1 << 7)) != 0); SetN (0); SetH (1); break; // BIT
-				case 0x79: SetZ ((*reg_C & (1 << 7)) != 0); SetN (0); SetH (1); break; // BIT
-				case 0x7A: SetZ ((*reg_D & (1 << 7)) != 0); SetN (0); SetH (1); break; // BIT
-				case 0x7B: SetZ ((*reg_E & (1 << 7)) != 0); SetN (0); SetH (1); break; // BIT
-				case 0x7C: SetZ ((*reg_H & (1 << 7)) != 0); SetN (0); SetH (1); break; // BIT
-				case 0x7D: SetZ ((*reg_L & (1 << 7)) != 0); SetN (0); SetH (1); break; // BIT
-				case 0x7E: SetZ ((mmu->GetByteAt (reg_HL) & (1 << 7)) != 0); SetN (0); SetH (1); break; // BIT
-				case 0x7F: SetZ ((*reg_A & (1 << 7)) != 0); SetN (0); SetH (1); break; // BIT
+				case 0x78: SetZ ((*reg_B & (1 << 7)) == 0); SetN (0); SetH (1); break; // BIT
+				case 0x79: SetZ ((*reg_C & (1 << 7)) == 0); SetN (0); SetH (1); break; // BIT
+				case 0x7A: SetZ ((*reg_D & (1 << 7)) == 0); SetN (0); SetH (1); break; // BIT
+				case 0x7B: SetZ ((*reg_E & (1 << 7)) == 0); SetN (0); SetH (1); break; // BIT
+				case 0x7C: SetZ ((*reg_H & (1 << 7)) == 0); SetN (0); SetH (1); break; // BIT
+				case 0x7D: SetZ ((*reg_L & (1 << 7)) == 0); SetN (0); SetH (1); break; // BIT
+				case 0x7E: SetZ ((mmu->GetByteAt (reg_HL) & (1 << 7)) == 0); SetN (0); SetH (1); break; // BIT
+				case 0x7F: SetZ ((*reg_A & (1 << 7)) == 0); SetN (0); SetH (1); break; // BIT
 					
 				case 0x80: *reg_B &= 0xFF ^ (1 << 0); break; // RES
 				case 0x81: *reg_C &= 0xFF ^ (1 << 0); break; // RES
@@ -598,7 +598,7 @@ void CPU::Execute (uint8_t Instruction) {
 		case 0x25: SetFlagsSub (*reg_H, 1, 0, 2); (*reg_H)--; break; // DEC r
 		case 0x35: SetFlagsSub (mmu->GetByteAt (reg_HL), 1, 0, 2); mmu->SetByteAt (reg_HL, mmu->GetByteAt (reg_HL) - 1); break; // DEC r
 			
-		case 0x27: if (flag_N) { if (flag_C) *reg_A -= 0x60; if (flag_H) *reg_A -= 0x06; } else { if (flag_C || *reg_A > 0x99) {*reg_A += 0x60; SetC (1);} if (flag_H || (*reg_A & 0x0F) > 0x09) *reg_A += 0x06; } SetZ (*reg_A == 0); SetH (0); break; // DAA
+		case 0x27: if (flag_N) { if (flag_C) *reg_A -= 0x60; if (flag_H) *reg_A -= 0x06; } else { if (flag_C || *reg_A > 0x99) {*reg_A += 0x60; SetC (1);} if (flag_H || (*reg_A & 0x0F) > 0x09) *reg_A += 0x06; } SetZ (*reg_A == 0); SetH (0); break; // DAA	
 		case 0x37: SetN (0); SetH (0); SetC (1); break; // SCF
 		
 		case 0x0C: SetFlagsAdd (*reg_C, 1, 0, 2); (*reg_C)++; break; // INC r
