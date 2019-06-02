@@ -26,7 +26,6 @@ CPU::CPU (MMU* _mmu) {
 	reg_DE = 0xFF56;
 	reg_HL = 0x000D;
 	SP = 0xFFFE;
-	
 }
 
 void CPU::Debug () {
@@ -41,6 +40,31 @@ void CPU::Debug () {
 	
 	for (int i = 0x10; i >= -0x10; i -= 2) {
 		printf ("0x%04x: 0x%04x\n", 0xDD02 + i, mmu->GetWordAt (0xDD02 + i));
+	}
+}
+
+void CPU::Interrupt (uint8_t ID) {
+	/*
+		0x0040 VBlank Handler
+		0x0048 LCDC Handler
+		0x0050 Timer Overflow Handler
+		0x0058 Serial Transfer Completion Handler
+		0x0060 P10-P13 High to Low Handler
+	*/
+	
+	if (InterruptsEnabled) {
+		uint8_t reg_IE = mmu->GetByteAt (0xFFFF);
+		uint8_t reg_IF = 0;
+		switch (ID) {
+			case 0: if (reg_IE & (1 << 0)) { InterruptsEnabled = 0; reg_IF |= (1 << 0); StackPush (PC); PC = 0x0040; } break; // VBlank
+			case 1: if (reg_IE & (1 << 1)) { InterruptsEnabled = 0; reg_IF |= (1 << 1); StackPush (PC); PC = 0x0048; } break; // LCDC
+			case 2: if (reg_IE & (1 << 2)) { InterruptsEnabled = 0; reg_IF |= (1 << 2); StackPush (PC); PC = 0x0050; } break; // Timer Overflow
+			case 3: if (reg_IE & (1 << 3)) { InterruptsEnabled = 0; reg_IF |= (1 << 3); StackPush (PC); PC = 0x0058; } break; // Serial Transfer Completion
+			case 4: if (reg_IE & (1 << 4)) { InterruptsEnabled = 0; reg_IF |= (1 << 4); StackPush (PC); PC = 0x0060; } break; // P10-P13 High to Low
+			default: break;
+		}
+		
+		mmu->SetByteAt (0xFF0F, reg_IF);
 	}
 }
 
@@ -118,13 +142,6 @@ void CPU::Clock () {
 void CPU::Execute (uint8_t Instruction) {
 	ClockCount += ClocksPerInstruction [Instruction];
 	
-	//printf ("0x%04x: Executing: 0x%02x\n", PC - 1, Instruction);
-	
-	if (PC - 1 == 0xC67E) {
-		//Debugging = 1;
-		//Debug();
-	}
-	
 	flag_Z = (*reg_F >> 7) & 1;
 	flag_N = (*reg_F >> 6) & 1;
 	flag_H = (*reg_F >> 5) & 1;
@@ -138,7 +155,7 @@ void CPU::Execute (uint8_t Instruction) {
 		case 0xF3: InterruptsEnabled = 0; break; // DI
 		case 0xFB: InterruptsEnabled = 1; break; // EI
 		case 0xCB: u8 = mmu->GetByteAt (PC++); // CB
-			
+			ClockCount += 8;
 			switch (u8) {
 				case 0x00: SetN (0); SetH (0); u8 = *reg_B >> 7; *reg_B <<= 1; *reg_B |= u8; SetC (u8); SetZ (*reg_B == 0); break; // RLC
 				case 0x01: SetN (0); SetH (0); u8 = *reg_C >> 7; *reg_C <<= 1; *reg_C |= u8; SetC (u8); SetZ (*reg_C == 0); break; // RLC
@@ -146,7 +163,7 @@ void CPU::Execute (uint8_t Instruction) {
 				case 0x03: SetN (0); SetH (0); u8 = *reg_E >> 7; *reg_E <<= 1; *reg_E |= u8; SetC (u8); SetZ (*reg_E == 0); break; // RLC
 				case 0x04: SetN (0); SetH (0); u8 = *reg_H >> 7; *reg_H <<= 1; *reg_H |= u8; SetC (u8); SetZ (*reg_H == 0); break; // RLC
 				case 0x05: SetN (0); SetH (0); u8 = *reg_L >> 7; *reg_L <<= 1; *reg_L |= u8; SetC (u8); SetZ (*reg_L == 0); break; // RLC
-				case 0x06: SetN (0); SetH (0); u8 = mmu->GetByteAt (reg_HL) >> 7; mmu->SetByteAt (reg_HL, (mmu->GetByteAt (reg_HL) << 1) | u8); SetC (u8); SetZ (mmu->GetByteAt (reg_HL) == 0); break; // RLC
+				case 0x06: SetN (0); SetH (0); u8 = mmu->GetByteAt (reg_HL) >> 7; mmu->SetByteAt (reg_HL, (mmu->GetByteAt (reg_HL) << 1) | u8); SetC (u8); SetZ (mmu->GetByteAt (reg_HL) == 0); ClockCount += 8; break; // RLC
 				case 0x07: SetN (0); SetH (0); u8 = *reg_A >> 7; *reg_A <<= 1; *reg_A |= u8; SetC (u8); SetZ (*reg_A == 0); break; // RLC
 					
 				case 0x08: SetN (0); SetH (0); u8 = *reg_B & 1; *reg_B >>= 1; *reg_B |= u8 << 7; SetC (u8); SetZ (*reg_B == 0); break; // RRC
@@ -155,7 +172,7 @@ void CPU::Execute (uint8_t Instruction) {
 				case 0x0B: SetN (0); SetH (0); u8 = *reg_E & 1; *reg_E >>= 1; *reg_E |= u8 << 7; SetC (u8); SetZ (*reg_E == 0); break; // RRC
 				case 0x0C: SetN (0); SetH (0); u8 = *reg_H & 1; *reg_H >>= 1; *reg_H |= u8 << 7; SetC (u8); SetZ (*reg_H == 0); break; // RRC
 				case 0x0D: SetN (0); SetH (0); u8 = *reg_L & 1; *reg_L >>= 1; *reg_L |= u8 << 7; SetC (u8); SetZ (*reg_L == 0); break; // RRC
-				case 0x0E: SetN (0); SetH (0); u8 = mmu->GetByteAt (reg_HL) & 1; mmu->SetByteAt (reg_HL, (mmu->GetByteAt (reg_HL) >> 1) | (u8 << 7)); SetC (u8); SetZ (mmu->GetByteAt (reg_HL) == 0); break; // RRC
+				case 0x0E: SetN (0); SetH (0); u8 = mmu->GetByteAt (reg_HL) & 1; mmu->SetByteAt (reg_HL, (mmu->GetByteAt (reg_HL) >> 1) | (u8 << 7)); SetC (u8); SetZ (mmu->GetByteAt (reg_HL) == 0); ClockCount += 8; break; // RRC
 				case 0x0F: SetN (0); SetH (0); u8 = *reg_A & 1; *reg_A >>= 1; *reg_A |= u8 << 7; SetC (u8); SetZ (*reg_A == 0); break; // RRC
 					
 				case 0x10: SetN (0); SetH (0); u8 = *reg_B >> 7; *reg_B <<= 1; *reg_B |= flag_C; SetC (u8); SetZ (*reg_B == 0); break; // RL
@@ -164,7 +181,7 @@ void CPU::Execute (uint8_t Instruction) {
 				case 0x13: SetN (0); SetH (0); u8 = *reg_E >> 7; *reg_E <<= 1; *reg_E |= flag_C; SetC (u8); SetZ (*reg_E == 0); break; // RL
 				case 0x14: SetN (0); SetH (0); u8 = *reg_H >> 7; *reg_H <<= 1; *reg_H |= flag_C; SetC (u8); SetZ (*reg_H == 0); break; // RL
 				case 0x15: SetN (0); SetH (0); u8 = *reg_L >> 7; *reg_L <<= 1; *reg_L |= flag_C; SetC (u8); SetZ (*reg_L == 0); break; // RL
-				case 0x16: SetN (0); SetH (0); u8 = mmu->GetByteAt (reg_HL) >> 7; mmu->SetByteAt (reg_HL, (mmu->GetByteAt (reg_HL) << 1) | flag_C); SetC (u8); SetZ (mmu->GetByteAt (reg_HL) == 0); break; // RL
+				case 0x16: SetN (0); SetH (0); u8 = mmu->GetByteAt (reg_HL) >> 7; mmu->SetByteAt (reg_HL, (mmu->GetByteAt (reg_HL) << 1) | flag_C); SetC (u8); SetZ (mmu->GetByteAt (reg_HL) == 0); ClockCount += 8; break; // RL
 				case 0x17: SetN (0); SetH (0); u8 = *reg_A >> 7; *reg_A <<= 1; *reg_A |= flag_C; SetC (u8); SetZ (*reg_A == 0); break; // RL
 					
 				case 0x18: SetN (0); SetH (0); u8 = *reg_B & 1; *reg_B >>= 1; *reg_B |= flag_C << 7; SetC (u8); SetZ (*reg_B == 0); break; // RR
@@ -173,7 +190,7 @@ void CPU::Execute (uint8_t Instruction) {
 				case 0x1B: SetN (0); SetH (0); u8 = *reg_E & 1; *reg_E >>= 1; *reg_E |= flag_C << 7; SetC (u8); SetZ (*reg_E == 0); break; // RR
 				case 0x1C: SetN (0); SetH (0); u8 = *reg_H & 1; *reg_H >>= 1; *reg_H |= flag_C << 7; SetC (u8); SetZ (*reg_H == 0); break; // RR
 				case 0x1D: SetN (0); SetH (0); u8 = *reg_L & 1; *reg_L >>= 1; *reg_L |= flag_C << 7; SetC (u8); SetZ (*reg_L == 0); break; // RR
-				case 0x1E: SetN (0); SetH (0); u8 = mmu->GetByteAt (reg_HL) & 1; mmu->SetByteAt (reg_HL, (mmu->GetByteAt (reg_HL) >> 1) | (flag_C << 7)); SetC (u8); SetZ (mmu->GetByteAt (reg_HL) == 0); break; // RR
+				case 0x1E: SetN (0); SetH (0); u8 = mmu->GetByteAt (reg_HL) & 1; mmu->SetByteAt (reg_HL, (mmu->GetByteAt (reg_HL) >> 1) | (flag_C << 7)); SetC (u8); SetZ (mmu->GetByteAt (reg_HL) == 0); ClockCount += 8; break; // RR
 				case 0x1F: SetN (0); SetH (0); u8 = *reg_A & 1; *reg_A >>= 1; *reg_A |= flag_C << 7; SetC (u8); SetZ (*reg_A == 0); break; // RR
 				
 				case 0x20: SetN (0); SetH (0); SetC (*reg_B >> 7); *reg_B <<= 1; SetZ (*reg_B == 0); break; // SLA
@@ -182,7 +199,7 @@ void CPU::Execute (uint8_t Instruction) {
 				case 0x23: SetN (0); SetH (0); SetC (*reg_E >> 7); *reg_E <<= 1; SetZ (*reg_E == 0); break; // SLA
 				case 0x24: SetN (0); SetH (0); SetC (*reg_H >> 7); *reg_H <<= 1; SetZ (*reg_H == 0); break; // SLA
 				case 0x25: SetN (0); SetH (0); SetC (*reg_L >> 7); *reg_L <<= 1; SetZ (*reg_L == 0); break; // SLA
-				case 0x26: SetN (0); SetH (0); SetC (mmu->GetByteAt (reg_HL) >> 7); mmu->SetByteAt (reg_HL, mmu->GetByteAt (reg_HL) << 1); SetZ (mmu->GetByteAt (reg_HL) == 0); break; // SLA
+				case 0x26: SetN (0); SetH (0); SetC (mmu->GetByteAt (reg_HL) >> 7); mmu->SetByteAt (reg_HL, mmu->GetByteAt (reg_HL) << 1); SetZ (mmu->GetByteAt (reg_HL) == 0); ClockCount += 8; break; // SLA
 				case 0x27: SetN (0); SetH (0); SetC (*reg_A >> 7); *reg_A <<= 1; SetZ (*reg_A == 0); break; // SLA
 					
 				case 0x28: SetN (0); SetH (0); u8 = *reg_B >> 7; SetC (*reg_B & 1); *reg_B >>= 1; *reg_B |= u8 << 7; SetZ (*reg_B == 0); break; // SRA
@@ -191,7 +208,7 @@ void CPU::Execute (uint8_t Instruction) {
 				case 0x2B: SetN (0); SetH (0); u8 = *reg_E >> 7; SetC (*reg_E & 1); *reg_E >>= 1; *reg_E |= u8 << 7; SetZ (*reg_E == 0); break; // SRA
 				case 0x2C: SetN (0); SetH (0); u8 = *reg_H >> 7; SetC (*reg_H & 1); *reg_H >>= 1; *reg_H |= u8 << 7; SetZ (*reg_H == 0); break; // SRA
 				case 0x2D: SetN (0); SetH (0); u8 = *reg_L >> 7; SetC (*reg_L & 1); *reg_L >>= 1; *reg_L |= u8 << 7; SetZ (*reg_L == 0); break; // SRA
-				case 0x2E: SetN (0); SetH (0); u8 = mmu->GetByteAt (reg_HL) >> 7; SetC (mmu->GetByteAt (reg_HL) & 1); mmu->SetByteAt (reg_HL, (mmu->GetByteAt (reg_HL) >> 1) | (u8 << 7)); SetZ (mmu->GetByteAt (reg_HL) == 0); break; // SRA
+				case 0x2E: SetN (0); SetH (0); u8 = mmu->GetByteAt (reg_HL) >> 7; SetC (mmu->GetByteAt (reg_HL) & 1); mmu->SetByteAt (reg_HL, (mmu->GetByteAt (reg_HL) >> 1) | (u8 << 7)); SetZ (mmu->GetByteAt (reg_HL) == 0); ClockCount += 8; break; // SRA
 				case 0x2F: SetN (0); SetH (0); u8 = *reg_A >> 7; SetC (*reg_A & 1); *reg_A >>= 1; *reg_A |= u8 << 7; SetZ (*reg_A == 0); break; // SRA
 				
 				case 0x30: SetN (0); SetH (0); SetC (0); SetZ (*reg_B == 0); *reg_B = (*reg_B << 4) | (*reg_B >> 4); break; // SWAP
@@ -200,7 +217,7 @@ void CPU::Execute (uint8_t Instruction) {
 				case 0x33: SetN (0); SetH (0); SetC (0); SetZ (*reg_E == 0); *reg_E = (*reg_E << 4) | (*reg_E >> 4); break; // SWAP
 				case 0x34: SetN (0); SetH (0); SetC (0); SetZ (*reg_H == 0); *reg_H = (*reg_H << 4) | (*reg_H >> 4); break; // SWAP
 				case 0x35: SetN (0); SetH (0); SetC (0); SetZ (*reg_L == 0); *reg_L = (*reg_L << 4) | (*reg_L >> 4); break; // SWAP
-				case 0x36: SetN (0); SetH (0); SetC (0); SetZ (mmu->GetByteAt (reg_HL) == 0); mmu->SetByteAt (reg_HL, (mmu->GetByteAt (reg_HL) << 4) | (mmu->GetByteAt (reg_HL) >> 4)); break; // SWAP
+				case 0x36: SetN (0); SetH (0); SetC (0); SetZ (mmu->GetByteAt (reg_HL) == 0); mmu->SetByteAt (reg_HL, (mmu->GetByteAt (reg_HL) << 4) | (mmu->GetByteAt (reg_HL) >> 4)); ClockCount += 8; break; // SWAP
 				case 0x37: SetN (0); SetH (0); SetC (0); SetZ (*reg_A == 0); *reg_A = (*reg_A << 4) | (*reg_A >> 4); break; // SWAP
 					
 				case 0x38: SetN (0); SetH (0); u8 = *reg_B & 1; *reg_B >>= 1; SetC (u8); SetZ (*reg_B == 0); break; // SRL
@@ -209,7 +226,7 @@ void CPU::Execute (uint8_t Instruction) {
 				case 0x3B: SetN (0); SetH (0); u8 = *reg_E & 1; *reg_E >>= 1; SetC (u8); SetZ (*reg_E == 0); break; // SRL
 				case 0x3C: SetN (0); SetH (0); u8 = *reg_H & 1; *reg_H >>= 1; SetC (u8); SetZ (*reg_H == 0); break; // SRL
 				case 0x3D: SetN (0); SetH (0); u8 = *reg_L & 1; *reg_L >>= 1; SetC (u8); SetZ (*reg_L == 0); break; // SRL
-				case 0x3E: SetN (0); SetH (0); u8 = mmu->GetByteAt (reg_HL) & 1; mmu->SetByteAt (reg_HL, mmu->GetByteAt (reg_HL) >> 1); SetC (u8); SetZ (mmu->GetByteAt (reg_HL) == 0); break; // SRL
+				case 0x3E: SetN (0); SetH (0); u8 = mmu->GetByteAt (reg_HL) & 1; mmu->SetByteAt (reg_HL, mmu->GetByteAt (reg_HL) >> 1); SetC (u8); SetZ (mmu->GetByteAt (reg_HL) == 0); ClockCount += 8; break; // SRL
 				case 0x3F: SetN (0); SetH (0); u8 = *reg_A & 1; *reg_A >>= 1; SetC (u8); SetZ (*reg_A == 0); break; // SRL
 				
 				case 0x40: SetZ ((*reg_B & (1 << 0)) == 0); SetN (0); SetH (1); break; // BIT
@@ -218,7 +235,7 @@ void CPU::Execute (uint8_t Instruction) {
 				case 0x43: SetZ ((*reg_E & (1 << 0)) == 0); SetN (0); SetH (1); break; // BIT
 				case 0x44: SetZ ((*reg_H & (1 << 0)) == 0); SetN (0); SetH (1); break; // BIT
 				case 0x45: SetZ ((*reg_L & (1 << 0)) == 0); SetN (0); SetH (1); break; // BIT
-				case 0x46: SetZ ((mmu->GetByteAt (reg_HL) & (1 << 0)) == 0); SetN (0); SetH (1); break; // BIT
+				case 0x46: SetZ ((mmu->GetByteAt (reg_HL) & (1 << 0)) == 0); SetN (0); SetH (1); ClockCount += 8; break; // BIT
 				case 0x47: SetZ ((*reg_A & (1 << 0)) == 0); SetN (0); SetH (1); break; // BIT
 					
 				case 0x48: SetZ ((*reg_B & (1 << 1)) == 0); SetN (0); SetH (1); break; // BIT
@@ -227,7 +244,7 @@ void CPU::Execute (uint8_t Instruction) {
 				case 0x4B: SetZ ((*reg_E & (1 << 1)) == 0); SetN (0); SetH (1); break; // BIT
 				case 0x4C: SetZ ((*reg_H & (1 << 1)) == 0); SetN (0); SetH (1); break; // BIT
 				case 0x4D: SetZ ((*reg_L & (1 << 1)) == 0); SetN (0); SetH (1); break; // BIT
-				case 0x4E: SetZ ((mmu->GetByteAt (reg_HL) & (1 << 1)) == 0); SetN (0); SetH (1); break; // BIT
+				case 0x4E: SetZ ((mmu->GetByteAt (reg_HL) & (1 << 1)) == 0); SetN (0); SetH (1); ClockCount += 8; break; // BIT
 				case 0x4F: SetZ ((*reg_A & (1 << 1)) == 0); SetN (0); SetH (1); break; // BIT
 				
 				case 0x50: SetZ ((*reg_B & (1 << 2)) == 0); SetN (0); SetH (1); break; // BIT
@@ -236,7 +253,7 @@ void CPU::Execute (uint8_t Instruction) {
 				case 0x53: SetZ ((*reg_E & (1 << 2)) == 0); SetN (0); SetH (1); break; // BIT
 				case 0x54: SetZ ((*reg_H & (1 << 2)) == 0); SetN (0); SetH (1); break; // BIT
 				case 0x55: SetZ ((*reg_L & (1 << 2)) == 0); SetN (0); SetH (1); break; // BIT
-				case 0x56: SetZ ((mmu->GetByteAt (reg_HL) & (1 << 2)) == 0); SetN (0); SetH (1); break; // BIT
+				case 0x56: SetZ ((mmu->GetByteAt (reg_HL) & (1 << 2)) == 0); SetN (0); SetH (1); ClockCount += 8; break; // BIT
 				case 0x57: SetZ ((*reg_A & (1 << 2)) == 0); SetN (0); SetH (1); break; // BIT
 					
 				case 0x58: SetZ ((*reg_B & (1 << 3)) == 0); SetN (0); SetH (1); break; // BIT
@@ -245,7 +262,7 @@ void CPU::Execute (uint8_t Instruction) {
 				case 0x5B: SetZ ((*reg_E & (1 << 3)) == 0); SetN (0); SetH (1); break; // BIT
 				case 0x5C: SetZ ((*reg_H & (1 << 3)) == 0); SetN (0); SetH (1); break; // BIT
 				case 0x5D: SetZ ((*reg_L & (1 << 3)) == 0); SetN (0); SetH (1); break; // BIT
-				case 0x5E: SetZ ((mmu->GetByteAt (reg_HL) & (1 << 3)) == 0); SetN (0); SetH (1); break; // BIT
+				case 0x5E: SetZ ((mmu->GetByteAt (reg_HL) & (1 << 3)) == 0); SetN (0); SetH (1); ClockCount += 8; break; // BIT
 				case 0x5F: SetZ ((*reg_A & (1 << 3)) == 0); SetN (0); SetH (1); break; // BIT
 				
 				case 0x60: SetZ ((*reg_B & (1 << 4)) == 0); SetN (0); SetH (1); break; // BIT
@@ -254,7 +271,7 @@ void CPU::Execute (uint8_t Instruction) {
 				case 0x63: SetZ ((*reg_E & (1 << 4)) == 0); SetN (0); SetH (1); break; // BIT
 				case 0x64: SetZ ((*reg_H & (1 << 4)) == 0); SetN (0); SetH (1); break; // BIT
 				case 0x65: SetZ ((*reg_L & (1 << 4)) == 0); SetN (0); SetH (1); break; // BIT
-				case 0x66: SetZ ((mmu->GetByteAt (reg_HL) & (1 << 4)) == 0); SetN (0); SetH (1); break; // BIT
+				case 0x66: SetZ ((mmu->GetByteAt (reg_HL) & (1 << 4)) == 0); SetN (0); SetH (1); ClockCount += 8; break; // BIT
 				case 0x67: SetZ ((*reg_A & (1 << 4)) == 0); SetN (0); SetH (1); break; // BIT
 					
 				case 0x68: SetZ ((*reg_B & (1 << 5)) == 0); SetN (0); SetH (1); break; // BIT
@@ -263,7 +280,7 @@ void CPU::Execute (uint8_t Instruction) {
 				case 0x6B: SetZ ((*reg_E & (1 << 5)) == 0); SetN (0); SetH (1); break; // BIT
 				case 0x6C: SetZ ((*reg_H & (1 << 5)) == 0); SetN (0); SetH (1); break; // BIT
 				case 0x6D: SetZ ((*reg_L & (1 << 5)) == 0); SetN (0); SetH (1); break; // BIT
-				case 0x6E: SetZ ((mmu->GetByteAt (reg_HL) & (1 << 5)) == 0); SetN (0); SetH (1); break; // BIT
+				case 0x6E: SetZ ((mmu->GetByteAt (reg_HL) & (1 << 5)) == 0); SetN (0); SetH (1); ClockCount += 8; break; // BIT
 				case 0x6F: SetZ ((*reg_A & (1 << 5)) == 0); SetN (0); SetH (1); break; // BIT
 				
 				case 0x70: SetZ ((*reg_B & (1 << 6)) == 0); SetN (0); SetH (1); break; // BIT
@@ -272,7 +289,7 @@ void CPU::Execute (uint8_t Instruction) {
 				case 0x73: SetZ ((*reg_E & (1 << 6)) == 0); SetN (0); SetH (1); break; // BIT
 				case 0x74: SetZ ((*reg_H & (1 << 6)) == 0); SetN (0); SetH (1); break; // BIT
 				case 0x75: SetZ ((*reg_L & (1 << 6)) == 0); SetN (0); SetH (1); break; // BIT
-				case 0x76: SetZ ((mmu->GetByteAt (reg_HL) & (1 << 6)) == 0); SetN (0); SetH (1); break; // BIT
+				case 0x76: SetZ ((mmu->GetByteAt (reg_HL) & (1 << 6)) == 0); SetN (0); SetH (1); ClockCount += 8; break; // BIT
 				case 0x77: SetZ ((*reg_A & (1 << 6)) == 0); SetN (0); SetH (1); break; // BIT
 					
 				case 0x78: SetZ ((*reg_B & (1 << 7)) == 0); SetN (0); SetH (1); break; // BIT
@@ -281,7 +298,7 @@ void CPU::Execute (uint8_t Instruction) {
 				case 0x7B: SetZ ((*reg_E & (1 << 7)) == 0); SetN (0); SetH (1); break; // BIT
 				case 0x7C: SetZ ((*reg_H & (1 << 7)) == 0); SetN (0); SetH (1); break; // BIT
 				case 0x7D: SetZ ((*reg_L & (1 << 7)) == 0); SetN (0); SetH (1); break; // BIT
-				case 0x7E: SetZ ((mmu->GetByteAt (reg_HL) & (1 << 7)) == 0); SetN (0); SetH (1); break; // BIT
+				case 0x7E: SetZ ((mmu->GetByteAt (reg_HL) & (1 << 7)) == 0); SetN (0); SetH (1); ClockCount += 8; break; // BIT
 				case 0x7F: SetZ ((*reg_A & (1 << 7)) == 0); SetN (0); SetH (1); break; // BIT
 					
 				case 0x80: *reg_B &= 0xFF ^ (1 << 0); break; // RES
@@ -290,7 +307,7 @@ void CPU::Execute (uint8_t Instruction) {
 				case 0x83: *reg_E &= 0xFF ^ (1 << 0); break; // RES
 				case 0x84: *reg_H &= 0xFF ^ (1 << 0); break; // RES
 				case 0x85: *reg_L &= 0xFF ^ (1 << 0); break; // RES
-				case 0x86: mmu->SetByteAt (reg_HL, mmu->GetByteAt (reg_HL) & (0xFF ^ (1 << 0))); break; // RES
+				case 0x86: mmu->SetByteAt (reg_HL, mmu->GetByteAt (reg_HL) & (0xFF ^ (1 << 0))); ClockCount += 8; break; // RES
 				case 0x87: *reg_A &= 0xFF ^ (1 << 0); break; // RES
 				
 				case 0x88: *reg_B &= 0xFF ^ (1 << 1); break; // RES
@@ -299,7 +316,7 @@ void CPU::Execute (uint8_t Instruction) {
 				case 0x8B: *reg_E &= 0xFF ^ (1 << 1); break; // RES
 				case 0x8C: *reg_H &= 0xFF ^ (1 << 1); break; // RES
 				case 0x8D: *reg_L &= 0xFF ^ (1 << 1); break; // RES
-				case 0x8E: mmu->SetByteAt (reg_HL, mmu->GetByteAt (reg_HL) & (0xFF ^ (1 << 1))); break; // RES
+				case 0x8E: mmu->SetByteAt (reg_HL, mmu->GetByteAt (reg_HL) & (0xFF ^ (1 << 1))); ClockCount += 8; break; // RES
 				case 0x8F: *reg_A &= 0xFF ^ (1 << 1); break; // RES
 				
 				case 0x90: *reg_B &= 0xFF ^ (1 << 2); break; // RES
@@ -308,7 +325,7 @@ void CPU::Execute (uint8_t Instruction) {
 				case 0x93: *reg_E &= 0xFF ^ (1 << 2); break; // RES
 				case 0x94: *reg_H &= 0xFF ^ (1 << 2); break; // RES
 				case 0x95: *reg_L &= 0xFF ^ (1 << 2); break; // RES
-				case 0x96: mmu->SetByteAt (reg_HL, mmu->GetByteAt (reg_HL) & (0xFF ^ (1 << 2))); break; // RES
+				case 0x96: mmu->SetByteAt (reg_HL, mmu->GetByteAt (reg_HL) & (0xFF ^ (1 << 2))); ClockCount += 8; break; // RES
 				case 0x97: *reg_A &= 0xFF ^ (1 << 2); break; // RES
 				
 				case 0x98: *reg_B &= 0xFF ^ (1 << 3); break; // RES
@@ -317,7 +334,7 @@ void CPU::Execute (uint8_t Instruction) {
 				case 0x9B: *reg_E &= 0xFF ^ (1 << 3); break; // RES
 				case 0x9C: *reg_H &= 0xFF ^ (1 << 3); break; // RES
 				case 0x9D: *reg_L &= 0xFF ^ (1 << 3); break; // RES
-				case 0x9E: mmu->SetByteAt (reg_HL, mmu->GetByteAt (reg_HL) & (0xFF ^ (1 << 3))); break; // RES
+				case 0x9E: mmu->SetByteAt (reg_HL, mmu->GetByteAt (reg_HL) & (0xFF ^ (1 << 3))); ClockCount += 8; break; // RES
 				case 0x9F: *reg_A &= 0xFF ^ (1 << 3); break; // RES
 				
 				case 0xA0: *reg_B &= 0xFF ^ (1 << 4); break; // RES
@@ -326,7 +343,7 @@ void CPU::Execute (uint8_t Instruction) {
 				case 0xA3: *reg_E &= 0xFF ^ (1 << 4); break; // RES
 				case 0xA4: *reg_H &= 0xFF ^ (1 << 4); break; // RES
 				case 0xA5: *reg_L &= 0xFF ^ (1 << 4); break; // RES
-				case 0xA6: mmu->SetByteAt (reg_HL, mmu->GetByteAt (reg_HL) & (0xFF ^ (1 << 4))); break; // RES
+				case 0xA6: mmu->SetByteAt (reg_HL, mmu->GetByteAt (reg_HL) & (0xFF ^ (1 << 4))); ClockCount += 8; break; // RES
 				case 0xA7: *reg_A &= 0xFF ^ (1 << 4); break; // RES
 				
 				case 0xA8: *reg_B &= 0xFF ^ (1 << 5); break; // RES
@@ -335,7 +352,7 @@ void CPU::Execute (uint8_t Instruction) {
 				case 0xAB: *reg_E &= 0xFF ^ (1 << 5); break; // RES
 				case 0xAC: *reg_H &= 0xFF ^ (1 << 5); break; // RES
 				case 0xAD: *reg_L &= 0xFF ^ (1 << 5); break; // RES
-				case 0xAE: mmu->SetByteAt (reg_HL, mmu->GetByteAt (reg_HL) & (0xFF ^ (1 << 5))); break; // RES
+				case 0xAE: mmu->SetByteAt (reg_HL, mmu->GetByteAt (reg_HL) & (0xFF ^ (1 << 5))); ClockCount += 8; break; // RES
 				case 0xAF: *reg_A &= 0xFF ^ (1 << 5); break; // RES
 				
 				case 0xB0: *reg_B &= 0xFF ^ (1 << 6); break; // RES
@@ -344,7 +361,7 @@ void CPU::Execute (uint8_t Instruction) {
 				case 0xB3: *reg_E &= 0xFF ^ (1 << 6); break; // RES
 				case 0xB4: *reg_H &= 0xFF ^ (1 << 6); break; // RES
 				case 0xB5: *reg_L &= 0xFF ^ (1 << 6); break; // RES
-				case 0xB6: mmu->SetByteAt (reg_HL, mmu->GetByteAt (reg_HL) & (0xFF ^ (1 << 6))); break; // RES
+				case 0xB6: mmu->SetByteAt (reg_HL, mmu->GetByteAt (reg_HL) & (0xFF ^ (1 << 6))); ClockCount += 8; break; // RES
 				case 0xB7: *reg_A &= 0xFF ^ (1 << 6); break; // RES
 				
 				case 0xB8: *reg_B &= 0xFF ^ (1 << 7); break; // RES
@@ -353,7 +370,7 @@ void CPU::Execute (uint8_t Instruction) {
 				case 0xBB: *reg_E &= 0xFF ^ (1 << 7); break; // RES
 				case 0xBC: *reg_H &= 0xFF ^ (1 << 7); break; // RES
 				case 0xBD: *reg_L &= 0xFF ^ (1 << 7); break; // RES
-				case 0xBE: mmu->SetByteAt (reg_HL, mmu->GetByteAt (reg_HL) & (0xFF ^ (1 << 7))); break; // RES
+				case 0xBE: mmu->SetByteAt (reg_HL, mmu->GetByteAt (reg_HL) & (0xFF ^ (1 << 7))); ClockCount += 8; break; // RES
 				case 0xBF: *reg_A &= 0xFF ^ (1 << 7); break; // RES
 					
 				case 0xC0: *reg_B |= 1 << 0; break; // SET
@@ -362,7 +379,7 @@ void CPU::Execute (uint8_t Instruction) {
 				case 0xC3: *reg_E |= 1 << 0; break; // SET
 				case 0xC4: *reg_H |= 1 << 0; break; // SET
 				case 0xC5: *reg_L |= 1 << 0; break; // SET
-				case 0xC6: mmu->SetByteAt (reg_HL, mmu->GetByteAt (reg_HL) | (1 << 0)); break; // SET
+				case 0xC6: mmu->SetByteAt (reg_HL, mmu->GetByteAt (reg_HL) | (1 << 0)); ClockCount += 8; break; // SET
 				case 0xC7: *reg_A |= 1 << 0; break; // SET
 					
 				case 0xC8: *reg_B |= 1 << 1; break; // SET
@@ -371,7 +388,7 @@ void CPU::Execute (uint8_t Instruction) {
 				case 0xCB: *reg_E |= 1 << 1; break; // SET
 				case 0xCC: *reg_H |= 1 << 1; break; // SET
 				case 0xCD: *reg_L |= 1 << 1; break; // SET
-				case 0xCE: mmu->SetByteAt (reg_HL, mmu->GetByteAt (reg_HL) | (1 << 1)); break; // SET
+				case 0xCE: mmu->SetByteAt (reg_HL, mmu->GetByteAt (reg_HL) | (1 << 1)); ClockCount += 8; break; // SET
 				case 0xCF: *reg_A |= 1 << 1; break; // SET
 				
 				case 0xD0: *reg_B |= 1 << 2; break; // SET
@@ -380,7 +397,7 @@ void CPU::Execute (uint8_t Instruction) {
 				case 0xD3: *reg_E |= 1 << 2; break; // SET
 				case 0xD4: *reg_H |= 1 << 2; break; // SET
 				case 0xD5: *reg_L |= 1 << 2; break; // SET
-				case 0xD6: mmu->SetByteAt (reg_HL, mmu->GetByteAt (reg_HL) | (1 << 2)); break; // SET
+				case 0xD6: mmu->SetByteAt (reg_HL, mmu->GetByteAt (reg_HL) | (1 << 2)); ClockCount += 8; break; // SET
 				case 0xD7: *reg_A |= 1 << 2; break; // SET
 					
 				case 0xD8: *reg_B |= 1 << 3; break; // SET
@@ -389,7 +406,7 @@ void CPU::Execute (uint8_t Instruction) {
 				case 0xDB: *reg_E |= 1 << 3; break; // SET
 				case 0xDC: *reg_H |= 1 << 3; break; // SET
 				case 0xDD: *reg_L |= 1 << 3; break; // SET
-				case 0xDE: mmu->SetByteAt (reg_HL, mmu->GetByteAt (reg_HL) | (1 << 3)); break; // SET
+				case 0xDE: mmu->SetByteAt (reg_HL, mmu->GetByteAt (reg_HL) | (1 << 3)); ClockCount += 8; break; // SET
 				case 0xDF: *reg_A |= 1 << 3; break; // SET
 				
 				case 0xE0: *reg_B |= 1 << 4; break; // SET
@@ -398,7 +415,7 @@ void CPU::Execute (uint8_t Instruction) {
 				case 0xE3: *reg_E |= 1 << 4; break; // SET
 				case 0xE4: *reg_H |= 1 << 4; break; // SET
 				case 0xE5: *reg_L |= 1 << 4; break; // SET
-				case 0xE6: mmu->SetByteAt (reg_HL, mmu->GetByteAt (reg_HL) | (1 << 4)); break; // SET
+				case 0xE6: mmu->SetByteAt (reg_HL, mmu->GetByteAt (reg_HL) | (1 << 4)); ClockCount += 8; break; // SET
 				case 0xE7: *reg_A |= 1 << 4; break; // SET
 					
 				case 0xE8: *reg_B |= 1 << 5; break; // SET
@@ -407,7 +424,7 @@ void CPU::Execute (uint8_t Instruction) {
 				case 0xEB: *reg_E |= 1 << 5; break; // SET
 				case 0xEC: *reg_H |= 1 << 5; break; // SET
 				case 0xED: *reg_L |= 1 << 5; break; // SET
-				case 0xEE: mmu->SetByteAt (reg_HL, mmu->GetByteAt (reg_HL) | (1 << 5)); break; // SET
+				case 0xEE: mmu->SetByteAt (reg_HL, mmu->GetByteAt (reg_HL) | (1 << 5)); ClockCount += 8; break; // SET
 				case 0xEF: *reg_A |= 1 << 5; break; // SET
 				
 				case 0xF0: *reg_B |= 1 << 6; break; // SET
@@ -416,7 +433,7 @@ void CPU::Execute (uint8_t Instruction) {
 				case 0xF3: *reg_E |= 1 << 6; break; // SET
 				case 0xF4: *reg_H |= 1 << 6; break; // SET
 				case 0xF5: *reg_L |= 1 << 6; break; // SET
-				case 0xF6: mmu->SetByteAt (reg_HL, mmu->GetByteAt (reg_HL) | (1 << 6)); break; // SET
+				case 0xF6: mmu->SetByteAt (reg_HL, mmu->GetByteAt (reg_HL) | (1 << 6)); ClockCount += 8; break; // SET
 				case 0xF7: *reg_A |= 1 << 6; break; // SET
 					
 				case 0xF8: *reg_B |= 1 << 7; break; // SET
@@ -425,7 +442,7 @@ void CPU::Execute (uint8_t Instruction) {
 				case 0xFB: *reg_E |= 1 << 7; break; // SET
 				case 0xFC: *reg_H |= 1 << 7; break; // SET
 				case 0xFD: *reg_L |= 1 << 7; break; // SET
-				case 0xFE: mmu->SetByteAt (reg_HL, mmu->GetByteAt (reg_HL) | (1 << 7)); break; // SET
+				case 0xFE: mmu->SetByteAt (reg_HL, mmu->GetByteAt (reg_HL) | (1 << 7)); ClockCount += 8; break; // SET
 				case 0xFF: *reg_A |= 1 << 7; break; // SET
 			}
 			break;

@@ -11,6 +11,7 @@ uint8_t MMU::GetByteAt (uint16_t Address) {
 void MMU::SetByteAt (uint16_t Address, uint8_t Value) {
 	if (Address == 0xFF01) {
 		printf ("%c", Value);
+		fflush (stdout);
 	}
 	
 	Memory [Address] = Value;

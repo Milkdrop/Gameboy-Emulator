@@ -8,8 +8,9 @@
 
 void OpenFileError (const char* Filename);
 void LoadROM (MMU* mmu, uint16_t Address, const char* Filename);
-void CPULoop (CPU* cpu, Display* display);
-
+uint8_t GetBit (uint8_t Value, uint8_t BitNo);
+void CPULoop (CPU* cpu, MMU* mmu, Display* display);
+			 
 int main (int argc, char** argv) {
 	if (argc < 3) {
 		printf ("Please specify Boot ROM + Game ROM Filename:\n");
@@ -33,7 +34,7 @@ int main (int argc, char** argv) {
 	LoadROM (mmu, 0x0000, argv[2]);
 	
 	// Loop
-	CPULoop (cpu, display);
+	CPULoop (cpu, mmu, display);
 	
 	// Cleanup
 	SDL_Quit ();
@@ -67,12 +68,17 @@ void LoadROM (MMU* mmu, uint16_t Address, const char* Filename) {
 	printf ("OK\n");
 }
 
-void CPULoop (CPU* cpu, Display* display) {
+uint8_t GetBit (uint8_t Value, uint8_t BitNo) {
+	return (Value & (1 << BitNo)) != 0;
+}
+
+void CPULoop (CPU* cpu, MMU* mmu, Display* display) {
 	// Main Loop Variables
 	SDL_Event ev;
 	const uint8_t *Keyboard = SDL_GetKeyboardState(NULL);
 	uint64_t CurrentTime = 0;
 	uint64_t LastInput = 0;
+	uint64_t LastDraw = 0;
 	uint8_t PressDebug = 0;
 	uint8_t Quit = 0;
 	
@@ -100,6 +106,17 @@ void CPULoop (CPU* cpu, Display* display) {
 					}
 				} else
 					PressDebug = 0;
+			}
+		}
+		
+		// Draw
+		if (CurrentTime - LastDraw >= 1000000 / 60 || LastDraw > CurrentTime) { // 60 Hz
+			const uint8_t* IOMap = mmu->IOMap;
+			uint8_t LCDControl = IOMap [0x40];
+			
+			if (GetBit (LCDControl, 7)) { // LCD Operation
+				// TODO Drawing
+				cpu->Interrupt (0);
 			}
 		}
 		
