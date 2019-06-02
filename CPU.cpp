@@ -22,6 +22,26 @@ const uint8_t ClocksPerInstruction[] = {
 
 CPU::CPU (MMU* _mmu) {
 	mmu = _mmu;
+	reg_AF = 0x1180;
+	reg_DE = 0xFF56;
+	reg_HL = 0x000D;
+	SP = 0xFFFE;
+	
+}
+
+void CPU::Debug () {
+	printf ("Registers:\n");
+	printf ("AF: 0x%04x\n", reg_AF);
+	printf ("BC: 0x%04x\n", reg_BC);
+	printf ("DE: 0x%04x\n", reg_DE);
+	printf ("HL: 0x%04x\n", reg_HL);
+	printf ("SP: 0x%04x\n", SP);
+	printf ("PC: 0x%04x\n", PC);
+	printf ("\n");
+	
+	for (int i = 0x10; i >= -0x10; i -= 2) {
+		printf ("0x%04x: 0x%04x\n", 0xDD02 + i, mmu->GetWordAt (0xDD02 + i));
+	}
 }
 
 uint16_t CPU::StackPop () {
@@ -38,45 +58,55 @@ void CPU::StackPush (uint16_t Value) {
 void CPU::SetZ (uint8_t Value) {
 	*reg_F &= 0b01111111;
 	*reg_F |= Value << 7;
+	flag_Z = (*reg_F >> 7) & 1;
 }
 
 void CPU::SetN (uint8_t Value) {
 	*reg_F &= 0b10111111;
 	*reg_F |= Value << 6;
+	flag_N = (*reg_F >> 6) & 1;
 }
 
 void CPU::SetH (uint8_t Value) {
 	*reg_F &= 0b11011111;
 	*reg_F |= Value << 5;
+	flag_H = (*reg_F >> 5) & 1;
 }
 
 void CPU::SetC (uint8_t Value) {
 	*reg_F &= 0b11101111;
 	*reg_F |= Value << 4;
+	flag_C = (*reg_F >> 4) & 1;
 }
 
-uint8_t CPU::GetCarry (uint16_t OpA, uint16_t OpB, uint8_t BitNo) {
-	uint32_t Result = OpA + OpB;
+uint8_t CPU::GetCarry (uint16_t OpA, uint16_t OpB, uint8_t Carry, uint8_t BitNo) {
+	uint32_t Result = OpA + OpB + Carry;
 	return ((Result ^ OpA ^ OpB) >> BitNo) & 1;
 }
 
 void CPU::SetFlagsAdd (uint8_t OpA, uint8_t OpB, uint8_t Carry, uint8_t CarrySetMode) {
 	// CarrySetMode: 0 - HC, 1 - C, 2 - H, 3 - None
-	uint8_t Result = OpA + OpB;
+	uint8_t Result = OpA + OpB + Carry;
 	
 	SetZ (Result == 0);
 	SetN (0);
 	
 	if (CarrySetMode == 0 || CarrySetMode == 2) // H
-		SetH (GetCarry (OpA, OpB + Carry, 4));
+		SetH (GetCarry (OpA, OpB, Carry, 4));
 	
 	if (CarrySetMode == 0 || CarrySetMode == 1) // C
-		SetC (GetCarry (OpA, OpB + Carry, 8));
+		SetC (GetCarry (OpA, OpB, Carry, 8));
 }
 
 void CPU::SetFlagsSub (uint8_t OpA, uint8_t OpB, uint8_t Carry, uint8_t CarrySetMode) {
 	SetFlagsAdd (OpA, ~OpB, !Carry, CarrySetMode);
 	SetN (1);
+	
+	if (CarrySetMode == 0 || CarrySetMode == 2)
+		SetH (!flag_H);
+	
+	if (CarrySetMode == 0 || CarrySetMode == 1)
+		SetC (!flag_C);
 }
 
 void CPU::Clock () {
@@ -88,7 +118,12 @@ void CPU::Clock () {
 void CPU::Execute (uint8_t Instruction) {
 	ClockCount += ClocksPerInstruction [Instruction];
 	
-	printf ("Executing Instruction 0x%02x At 0x%04x\n", Instruction, PC - 1);
+	//printf ("0x%04x: Executing: 0x%02x\n", PC - 1, Instruction);
+	
+	if (PC - 1 == 0xC67E) {
+		//Debugging = 1;
+		//Debug();
+	}
 	
 	flag_Z = (*reg_F >> 7) & 1;
 	flag_N = (*reg_F >> 6) & 1;
@@ -540,16 +575,16 @@ void CPU::Execute (uint8_t Instruction) {
 		case 0xC1: reg_BC = StackPop (); break; // POP nn
 		case 0xD1: reg_DE = StackPop (); break; // POP nn
 		case 0xE1: reg_HL = StackPop (); break; // POP nn
-		case 0xF1: reg_AF = StackPop (); break; // POP nn
+		case 0xF1: reg_AF = StackPop (); *reg_F &= 0xF0; break; // POP nn
 			
 		case 0xC5: StackPush (reg_BC); break; // PUSH nn
 		case 0xD5: StackPush (reg_DE); break; // PUSH nn
 		case 0xE5: StackPush (reg_HL); break; // PUSH nn
 		case 0xF5: StackPush (reg_AF); break; // PUSH nn
 			
-		case 0x08: mmu->SetByteAt (mmu->GetWordAt (PC), SP); PC += 2; break; // LD (a16), SP
+		case 0x08: mmu->SetWordAt (mmu->GetWordAt (PC), SP); PC += 2; break; // LD (a16), SP
 			
-		case 0xF8: i8 = mmu->GetByteAt (PC++); reg_HL = SP + i8; break; // LD HL, SP + r8
+		case 0xF8: i8 = mmu->GetByteAt (PC++); u16 = i8; SetFlagsAdd (SP, u16, 0, 0); SetZ (0); SetN (0); reg_HL = SP + i8; break; // LD HL, SP + r8
 		case 0xF9: SP = reg_HL; break; // LD SP, HL
 		
 		// 8bit Arithmetic / Logical
@@ -563,7 +598,7 @@ void CPU::Execute (uint8_t Instruction) {
 		case 0x25: SetFlagsSub (*reg_H, 1, 0, 2); (*reg_H)--; break; // DEC r
 		case 0x35: SetFlagsSub (mmu->GetByteAt (reg_HL), 1, 0, 2); mmu->SetByteAt (reg_HL, mmu->GetByteAt (reg_HL) - 1); break; // DEC r
 			
-		case 0x27: if (flag_N) { if (flag_C) *reg_A -= 0x60; if (flag_H) *reg_A -= 0x06; } else { if (flag_C || *reg_A > 0x99) {*reg_A += 0x60; SetC (1);} if (flag_H || (*reg_A & 0x0F) > 9) *reg_A += 0x06; } SetZ (*reg_A == 0); SetH (0); break; // DAA
+		case 0x27: if (flag_N) { if (flag_C) *reg_A -= 0x60; if (flag_H) *reg_A -= 0x06; } else { if (flag_C || *reg_A > 0x99) {*reg_A += 0x60; SetC (1);} if (flag_H || (*reg_A & 0x0F) > 0x09) *reg_A += 0x06; } SetZ (*reg_A == 0); SetH (0); break; // DAA
 		case 0x37: SetN (0); SetH (0); SetC (1); break; // SCF
 		
 		case 0x0C: SetFlagsAdd (*reg_C, 1, 0, 2); (*reg_C)++; break; // INC r
@@ -667,16 +702,18 @@ void CPU::Execute (uint8_t Instruction) {
 		case 0x23: reg_HL++; break; // INC rr
 		case 0x33: SP++; break; // INC rr
 			
-		case 0x09: SetN (0); SetH (GetCarry (reg_HL, reg_BC, 12)); SetC (GetCarry (reg_HL, reg_BC, 16)); reg_HL += reg_BC; break; // ADD rr, rr
-		case 0x19: SetN (0); SetH (GetCarry (reg_HL, reg_DE, 12)); SetC (GetCarry (reg_HL, reg_DE, 16)); reg_HL += reg_DE; break; // ADD rr, rr
-		case 0x29: SetN (0); SetH (GetCarry (reg_HL, reg_HL, 12)); SetC (GetCarry (reg_HL, reg_HL, 16)); reg_HL += reg_HL; break; // ADD rr, rr
-		case 0x39: SetN (0); SetH (GetCarry (reg_HL, SP, 12)); SetC (GetCarry (reg_HL, SP, 16)); reg_HL += SP; break; // ADD rr, rr
+		case 0x09: SetN (0); SetH (GetCarry (reg_HL, reg_BC, 0, 12)); SetC (GetCarry (reg_HL, reg_BC, 0, 16)); reg_HL += reg_BC; break; // ADD rr, rr
+		case 0x19: SetN (0); SetH (GetCarry (reg_HL, reg_DE, 0, 12)); SetC (GetCarry (reg_HL, reg_DE, 0, 16)); reg_HL += reg_DE; break; // ADD rr, rr
+		case 0x29: SetN (0); SetH (GetCarry (reg_HL, reg_HL, 0, 12)); SetC (GetCarry (reg_HL, reg_HL, 0, 16)); reg_HL += reg_HL; break; // ADD rr, rr
+		case 0x39: SetN (0); SetH (GetCarry (reg_HL, SP, 0, 12)); SetC (GetCarry (reg_HL, SP, 0, 16)); reg_HL += SP; break; // ADD rr, rr
 			
 		case 0x0B: reg_BC--; break; // DEC rr
 		case 0x1B: reg_DE--; break; // DEC rr
 		case 0x2B: reg_HL--; break; // DEC rr
 		case 0x3B: SP--; break; // DEC rr
 		
+		case 0xE8: i8 = mmu->GetByteAt (PC++); u16 = i8; SetFlagsAdd (SP, u16, 0, 0); SetZ (0); SetN (0); SP += i8; break; // ADD SP, r8
+			
 		// 8bit Rotation / Shifts
 		case 0x07: SetZ (0); SetN (0); SetH (0); u8 = *reg_A >> 7; *reg_A <<= 1; *reg_A |= u8; SetC (u8); break; // RLCA
 		case 0x17: SetZ (0); SetN (0); SetH (0); u8 = *reg_A >> 7; *reg_A <<= 1; *reg_A |= flag_C; SetC (u8); break; // RLA

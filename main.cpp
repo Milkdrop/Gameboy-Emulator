@@ -29,7 +29,8 @@ int main (int argc, char** argv) {
 	MMU* mmu = new MMU;
 	CPU* cpu = new CPU (mmu);
 	Display* display = new Display ("Gameboy", 160, 144, 2);
-	LoadROM (mmu, 0x0000, argv[1]);
+	//LoadROM (mmu, 0x0000, argv[1]);
+	LoadROM (mmu, 0x0000, argv[2]);
 	
 	// Loop
 	CPULoop (cpu, display);
@@ -69,8 +70,10 @@ void LoadROM (MMU* mmu, uint16_t Address, const char* Filename) {
 void CPULoop (CPU* cpu, Display* display) {
 	// Main Loop Variables
 	SDL_Event ev;
+	const uint8_t *Keyboard = SDL_GetKeyboardState(NULL);
 	uint64_t CurrentTime = 0;
 	uint64_t LastInput = 0;
+	uint8_t PressDebug = 0;
 	uint8_t Quit = 0;
 	
 	// Main Loop
@@ -85,8 +88,22 @@ void CPULoop (CPU* cpu, Display* display) {
 					Quit = 1;
 				}
 			}
+			
+			if (cpu->Debugging) {
+				if (Keyboard [SDL_SCANCODE_F3] || Keyboard [SDL_SCANCODE_F4]) {
+					if (PressDebug == 0) {
+						PressDebug = 1;
+						//cpu->Debugging = 0;
+						cpu->Clock ();
+						if (Keyboard [SDL_SCANCODE_F3])
+							cpu->Debug ();
+					}
+				} else
+					PressDebug = 0;
+			}
 		}
 		
-		cpu->Clock ();
+		if (!cpu->Debugging)
+			cpu->Clock ();
 	}
 }

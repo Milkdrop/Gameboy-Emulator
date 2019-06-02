@@ -30,6 +30,7 @@ class MMU {
 	
 		// Convenience Pointers
 		const uint8_t* VRAM = Memory + 0x8000;
+		const uint8_t* OAM = Memory + 0xFE00;
 	private:
 		uint8_t Memory[0x10000];
 };

@@ -8,9 +8,11 @@ class CPU {
 	public:
 		CPU (MMU* _mmu);
 		void Clock ();
+		void Debug ();
 		void Interrupt (uint8_t ID);
 	
 		uint64_t ClockCount = 0;
+		uint8_t Debugging = 0;
 	private:
 		MMU* mmu;
 		void Execute (uint8_t Instruction);
@@ -30,7 +32,7 @@ class CPU {
 		uint8_t* reg_L = ((uint8_t*) &reg_HL);
 		
 		uint16_t SP = 0;
-		uint16_t PC = 0;
+		uint16_t PC = 0x100;
 	
 		// Flags - For Convenience
 		uint8_t flag_Z = 0;
@@ -58,7 +60,7 @@ class CPU {
 		void SetN (uint8_t Value);
 		void SetH (uint8_t Value);
 		void SetC (uint8_t Value);
-		uint8_t GetCarry (uint16_t OpA, uint16_t OpB, uint8_t BitNo);
+		uint8_t GetCarry (uint16_t OpA, uint16_t OpB, uint8_t Carry, uint8_t BitNo);
 		void SetFlagsAdd (uint8_t OpA, uint8_t OpB, uint8_t Carry, uint8_t CarrySetMode);
 		void SetFlagsSub (uint8_t OpA, uint8_t OpB, uint8_t Carry, uint8_t CarrySetMode);
 };
