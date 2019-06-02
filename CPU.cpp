@@ -35,6 +35,50 @@ void CPU::StackPush (uint16_t Value) {
 	mmu->SetWordAt (SP, Value);
 }
 
+void CPU::SetZ (uint8_t Value) {
+	*reg_F &= 0b01111111;
+	*reg_F |= Value << 7;
+}
+
+void CPU::SetN (uint8_t Value) {
+	*reg_F &= 0b10111111;
+	*reg_F |= Value << 6;
+}
+
+void CPU::SetH (uint8_t Value) {
+	*reg_F &= 0b11011111;
+	*reg_F |= Value << 5;
+}
+
+void CPU::SetC (uint8_t Value) {
+	*reg_F &= 0b11101111;
+	*reg_F |= Value << 4;
+}
+
+uint8_t CPU::GetCarry (uint16_t OpA, uint16_t OpB, uint8_t BitNo) {
+	uint32_t Result = OpA + OpB;
+	return ((Result ^ OpA ^ OpB) >> BitNo) & 1;
+}
+
+void CPU::SetFlagsAdd (uint8_t OpA, uint8_t OpB, uint8_t Carry, uint8_t CarrySetMode) {
+	// CarrySetMode: 0 - HC, 1 - C, 2 - H, 3 - None
+	uint8_t Result = OpA + OpB;
+	
+	SetZ (Result == 0);
+	SetN (0);
+	
+	if (CarrySetMode == 0 || CarrySetMode == 2) // H
+		SetH (GetCarry (OpA, OpB + Carry, 4));
+	
+	if (CarrySetMode == 0 || CarrySetMode == 1) // C
+		SetC (GetCarry (OpA, OpB + Carry, 8));
+}
+
+void CPU::SetFlagsSub (uint8_t OpA, uint8_t OpB, uint8_t Carry, uint8_t CarrySetMode) {
+	SetFlagsAdd (OpA, ~OpB, !Carry, CarrySetMode);
+	SetN (1);
+}
+
 void CPU::Clock () {
 	uint8_t Instruction = mmu->GetByteAt (PC++);
 	
@@ -43,6 +87,8 @@ void CPU::Clock () {
 
 void CPU::Execute (uint8_t Instruction) {
 	ClockCount += ClocksPerInstruction [Instruction];
+	
+	printf ("Executing Instruction 0x%02x At 0x%04x\n", Instruction, PC - 1);
 	
 	flag_Z = (*reg_F >> 7) & 1;
 	flag_N = (*reg_F >> 6) & 1;
@@ -56,7 +102,13 @@ void CPU::Execute (uint8_t Instruction) {
 		case 0x76: Halt = 1; break; // HALT
 		case 0xF3: InterruptsEnabled = 0; break; // DI
 		case 0xFB: InterruptsEnabled = 1; break; // EI
-		case 0xCB: printf ("Do CB\n"); break; // CB
+		case 0xCB: u8 = mmu->GetByteAt (PC++); // CB
+			switch (u8) {
+				case 0x11: SetN (0); SetH (0); u8 = *reg_C >> 7; *reg_C <<= 1; *reg_C |= flag_C; SetC (u8); break; // RL
+				case 0x7C: SetZ (*reg_H >> 7); SetN (0); SetH (1); break; // BIT
+				default: printf ("Doing CB: 0x%02x\n", u8);
+			}
+			break;
 		
 		// Jumps / Calls
 		case 0xC3: PC = mmu->GetWordAt(PC); break; // JP a16
@@ -214,7 +266,139 @@ void CPU::Execute (uint8_t Instruction) {
 			
 		case 0xF8: i8 = mmu->GetByteAt (PC++); reg_HL = SP + i8; break; // LD HL, SP + r8
 		case 0xF9: SP = reg_HL; break; // LD SP, HL
+		
+		// 8bit Arithmetic / Logical
+		case 0x04: SetFlagsAdd (*reg_B, 1, 0, 2); (*reg_B)++; break; // INC r
+		case 0x14: SetFlagsAdd (*reg_D, 1, 0, 2); (*reg_D)++; break; // INC r
+		case 0x24: SetFlagsAdd (*reg_H, 1, 0, 2); (*reg_H)++; break; // INC r
+		case 0x34: SetFlagsAdd (mmu->GetByteAt (reg_HL), 1, 0, 2); mmu->SetByteAt (reg_HL, mmu->GetByteAt (reg_HL) + 1); break; // INC r
+		
+		case 0x05: SetFlagsSub (*reg_B, 1, 0, 2); (*reg_B)--; break; // DEC r
+		case 0x15: SetFlagsSub (*reg_D, 1, 0, 2); (*reg_D)--; break; // DEC r
+		case 0x25: SetFlagsSub (*reg_H, 1, 0, 2); (*reg_H)--; break; // DEC r
+		case 0x35: SetFlagsSub (mmu->GetByteAt (reg_HL), 1, 0, 2); mmu->SetByteAt (reg_HL, mmu->GetByteAt (reg_HL) - 1); break; // DEC r
 			
+		case 0x27: if (flag_N) { if (flag_C) *reg_A -= 0x60; if (flag_H) *reg_A -= 0x06; } else { if (flag_C || *reg_A > 0x99) {*reg_A += 0x60; SetC (1);} if (flag_H || (*reg_A & 0x0F) > 9) *reg_A += 0x06; } SetZ (*reg_A == 0); SetH (0); break; // DAA
+		case 0x37: SetN (0); SetH (0); SetC (1); break; // SCF
+		
+		case 0x0C: SetFlagsAdd (*reg_C, 1, 0, 2); (*reg_C)++; break; // INC r
+		case 0x1C: SetFlagsAdd (*reg_E, 1, 0, 2); (*reg_E)++; break; // INC r
+		case 0x2C: SetFlagsAdd (*reg_L, 1, 0, 2); (*reg_L)++; break; // INC r
+		case 0x3C: SetFlagsAdd (*reg_A, 1, 0, 2); (*reg_A)++; break; // INC r
+			
+		case 0x0D: SetFlagsSub (*reg_C, 1, 0, 2); (*reg_C)--; break; // DEC r
+		case 0x1D: SetFlagsSub (*reg_E, 1, 0, 2); (*reg_E)--; break; // DEC r
+		case 0x2D: SetFlagsSub (*reg_L, 1, 0, 2); (*reg_L)--; break; // DEC r
+		case 0x3D: SetFlagsSub (*reg_A, 1, 0, 2); (*reg_A)--; break; // DEC r
+			
+		case 0x2F: *reg_A = ~*reg_A; SetN (1); SetH (1); break; // CPL
+		case 0x3F: SetC (!flag_C); SetN (0); SetH (0); break; // CCF
+		
+		case 0x80: SetFlagsAdd (*reg_A, *reg_B, 0, 0); *reg_A += *reg_B; break; // ADD r1, r2
+		case 0x81: SetFlagsAdd (*reg_A, *reg_C, 0, 0); *reg_A += *reg_C; break; // ADD r1, r2
+		case 0x82: SetFlagsAdd (*reg_A, *reg_D, 0, 0); *reg_A += *reg_D; break; // ADD r1, r2
+		case 0x83: SetFlagsAdd (*reg_A, *reg_E, 0, 0); *reg_A += *reg_E; break; // ADD r1, r2
+		case 0x84: SetFlagsAdd (*reg_A, *reg_H, 0, 0); *reg_A += *reg_H; break; // ADD r1, r2
+		case 0x85: SetFlagsAdd (*reg_A, *reg_L, 0, 0); *reg_A += *reg_L; break; // ADD r1, r2
+		case 0x86: SetFlagsAdd (*reg_A, mmu->GetByteAt (reg_HL), 0, 0); *reg_A += mmu->GetByteAt (reg_HL); break; // ADD r1, r2
+		case 0x87: SetFlagsAdd (*reg_A, *reg_A, 0, 0); *reg_A += *reg_A; break; // ADD r1, r2
+			
+		case 0x88: u8 = flag_C; SetFlagsAdd (*reg_A, *reg_B, flag_C, 0); *reg_A += *reg_B + u8; break; // ADC r1, r2
+		case 0x89: u8 = flag_C; SetFlagsAdd (*reg_A, *reg_C, flag_C, 0); *reg_A += *reg_C + u8; break; // ADC r1, r2
+		case 0x8A: u8 = flag_C; SetFlagsAdd (*reg_A, *reg_D, flag_C, 0); *reg_A += *reg_D + u8; break; // ADC r1, r2
+		case 0x8B: u8 = flag_C; SetFlagsAdd (*reg_A, *reg_E, flag_C, 0); *reg_A += *reg_E + u8; break; // ADC r1, r2
+		case 0x8C: u8 = flag_C; SetFlagsAdd (*reg_A, *reg_H, flag_C, 0); *reg_A += *reg_H + u8; break; // ADC r1, r2
+		case 0x8D: u8 = flag_C; SetFlagsAdd (*reg_A, *reg_L, flag_C, 0); *reg_A += *reg_L + u8; break; // ADC r1, r2
+		case 0x8E: u8 = flag_C; SetFlagsAdd (*reg_A, mmu->GetByteAt (reg_HL), flag_C, 0); *reg_A += mmu->GetByteAt (reg_HL) + u8; break; // ADC r1, r2
+		case 0x8F: u8 = flag_C; SetFlagsAdd (*reg_A, *reg_A, flag_C, 0); *reg_A += *reg_A + u8; break; // ADC r1, r2
+			
+		case 0x90: SetFlagsSub (*reg_A, *reg_B, 0, 0); *reg_A -= *reg_B; break; // SUB r1, r2
+		case 0x91: SetFlagsSub (*reg_A, *reg_C, 0, 0); *reg_A -= *reg_C; break; // SUB r1, r2
+		case 0x92: SetFlagsSub (*reg_A, *reg_D, 0, 0); *reg_A -= *reg_D; break; // SUB r1, r2
+		case 0x93: SetFlagsSub (*reg_A, *reg_E, 0, 0); *reg_A -= *reg_E; break; // SUB r1, r2
+		case 0x94: SetFlagsSub (*reg_A, *reg_H, 0, 0); *reg_A -= *reg_H; break; // SUB r1, r2
+		case 0x95: SetFlagsSub (*reg_A, *reg_L, 0, 0); *reg_A -= *reg_L; break; // SUB r1, r2
+		case 0x96: SetFlagsSub (*reg_A, mmu->GetByteAt (reg_HL), 0, 0); *reg_A -= mmu->GetByteAt (reg_HL); break; // SUB r1, r2
+		case 0x97: SetFlagsSub (*reg_A, *reg_A, 0, 0); *reg_A -= *reg_A; break; // SUB r1, r2
+			
+		case 0x98: u8 = flag_C; SetFlagsSub (*reg_A, *reg_B, flag_C, 0); *reg_A -= *reg_B + u8; break; // SBC r1, r2
+		case 0x99: u8 = flag_C; SetFlagsSub (*reg_A, *reg_C, flag_C, 0); *reg_A -= *reg_C + u8; break; // SBC r1, r2
+		case 0x9A: u8 = flag_C; SetFlagsSub (*reg_A, *reg_D, flag_C, 0); *reg_A -= *reg_D + u8; break; // SBC r1, r2
+		case 0x9B: u8 = flag_C; SetFlagsSub (*reg_A, *reg_E, flag_C, 0); *reg_A -= *reg_E + u8; break; // SBC r1, r2
+		case 0x9C: u8 = flag_C; SetFlagsSub (*reg_A, *reg_H, flag_C, 0); *reg_A -= *reg_H + u8; break; // SBC r1, r2
+		case 0x9D: u8 = flag_C; SetFlagsSub (*reg_A, *reg_L, flag_C, 0); *reg_A -= *reg_L + u8; break; // SBC r1, r2
+		case 0x9E: u8 = flag_C; SetFlagsSub (*reg_A, mmu->GetByteAt (reg_HL), flag_C, 0); *reg_A -= mmu->GetByteAt (reg_HL) + u8; break; // SBC r1, r2
+		case 0x9F: u8 = flag_C; SetFlagsSub (*reg_A, *reg_A, flag_C, 0); *reg_A -= *reg_A + u8; break; // SBC r1, r2
+		
+		case 0xA0: *reg_A &= *reg_B; SetZ (*reg_A == 0); SetN (0); SetH (1); SetC (0); break; // AND r
+		case 0xA1: *reg_A &= *reg_C; SetZ (*reg_A == 0); SetN (0); SetH (1); SetC (0); break; // AND r
+		case 0xA2: *reg_A &= *reg_D; SetZ (*reg_A == 0); SetN (0); SetH (1); SetC (0); break; // AND r
+		case 0xA3: *reg_A &= *reg_E; SetZ (*reg_A == 0); SetN (0); SetH (1); SetC (0); break; // AND r
+		case 0xA4: *reg_A &= *reg_H; SetZ (*reg_A == 0); SetN (0); SetH (1); SetC (0); break; // AND r
+		case 0xA5: *reg_A &= *reg_L; SetZ (*reg_A == 0); SetN (0); SetH (1); SetC (0); break; // AND r
+		case 0xA6: *reg_A &= mmu->GetByteAt (reg_HL); SetZ (*reg_A == 0); SetN (0); SetH (1); SetC (0); break; // AND r
+		case 0xA7: *reg_A &= *reg_A; SetZ (*reg_A == 0); SetN (0); SetH (1); SetC (0); break; // AND r
+			
+		case 0xA8: *reg_A ^= *reg_B; SetZ (*reg_A == 0); SetN (0); SetH (0); SetC (0); break; // XOR r
+		case 0xA9: *reg_A ^= *reg_C; SetZ (*reg_A == 0); SetN (0); SetH (0); SetC (0); break; // XOR r
+		case 0xAA: *reg_A ^= *reg_D; SetZ (*reg_A == 0); SetN (0); SetH (0); SetC (0); break; // XOR r
+		case 0xAB: *reg_A ^= *reg_E; SetZ (*reg_A == 0); SetN (0); SetH (0); SetC (0); break; // XOR r
+		case 0xAC: *reg_A ^= *reg_H; SetZ (*reg_A == 0); SetN (0); SetH (0); SetC (0); break; // XOR r
+		case 0xAD: *reg_A ^= *reg_L; SetZ (*reg_A == 0); SetN (0); SetH (0); SetC (0); break; // XOR r
+		case 0xAE: *reg_A ^= mmu->GetByteAt (reg_HL); SetZ (*reg_A == 0); SetN (0); SetH (0); SetC (0); break; // XOR r
+		case 0xAF: *reg_A ^= *reg_A; SetZ (*reg_A == 0); SetN (0); SetH (0); SetC (0); break; // XOR r
+			
+		case 0xB0: *reg_A |= *reg_B; SetZ (*reg_A == 0); SetN (0); SetH (0); SetC (0); break; // OR r
+		case 0xB1: *reg_A |= *reg_C; SetZ (*reg_A == 0); SetN (0); SetH (0); SetC (0); break; // OR r
+		case 0xB2: *reg_A |= *reg_D; SetZ (*reg_A == 0); SetN (0); SetH (0); SetC (0); break; // OR r
+		case 0xB3: *reg_A |= *reg_E; SetZ (*reg_A == 0); SetN (0); SetH (0); SetC (0); break; // OR r
+		case 0xB4: *reg_A |= *reg_H; SetZ (*reg_A == 0); SetN (0); SetH (0); SetC (0); break; // OR r
+		case 0xB5: *reg_A |= *reg_L; SetZ (*reg_A == 0); SetN (0); SetH (0); SetC (0); break; // OR r
+		case 0xB6: *reg_A |= mmu->GetByteAt (reg_HL); SetZ (*reg_A == 0); SetN (0); SetH (0); SetC (0); break; // OR r
+		case 0xB7: *reg_A |= *reg_A; SetZ (*reg_A == 0); SetN (0); SetH (0); SetC (0); break; // OR r
+			
+		case 0xB8: SetFlagsSub (*reg_A, *reg_B, 0, 0); break; // CP r
+		case 0xB9: SetFlagsSub (*reg_A, *reg_C, 0, 0); break; // CP r
+		case 0xBA: SetFlagsSub (*reg_A, *reg_D, 0, 0); break; // CP r
+		case 0xBB: SetFlagsSub (*reg_A, *reg_E, 0, 0); break; // CP r
+		case 0xBC: SetFlagsSub (*reg_A, *reg_H, 0, 0); break; // CP r
+		case 0xBD: SetFlagsSub (*reg_A, *reg_L, 0, 0); break; // CP r
+		case 0xBE: SetFlagsSub (*reg_A, mmu->GetByteAt (reg_HL), 0, 0); break; // CP r
+		case 0xBF: SetFlagsSub (*reg_A, *reg_A, 0, 0); break; // CP r
+		
+		case 0xC6: u8 = mmu->GetByteAt (PC++); SetFlagsAdd (*reg_A, u8, 0, 0); *reg_A += u8; break; // ADD A, d8
+		case 0xD6: u8 = mmu->GetByteAt (PC++); SetFlagsSub (*reg_A, u8, 0, 0); *reg_A -= u8; break; // SUB A, d8
+		case 0xE6: u8 = mmu->GetByteAt (PC++); *reg_A &= u8; SetZ (*reg_A == 0); SetN (0); SetH (1); SetC (0); break; // AND A, d8
+		case 0xF6: u8 = mmu->GetByteAt (PC++); *reg_A |= u8; SetZ (*reg_A == 0); SetN (0); SetH (0); SetC (0); break; // OR A, d8
+			
+		case 0xCE: i8 = flag_C; u8 = mmu->GetByteAt (PC++); SetFlagsAdd (*reg_A, u8, flag_C, 0); *reg_A += u8 + i8; break; // ADD A, d8
+		case 0xDE: i8 = flag_C; u8 = mmu->GetByteAt (PC++); SetFlagsSub (*reg_A, u8, flag_C, 0); *reg_A -= u8 + i8; break; // SUB A, d8
+		case 0xEE: u8 = mmu->GetByteAt (PC++); *reg_A ^= u8; SetZ (*reg_A == 0); SetN (0); SetH (0); SetC (0); break; // XOR A, d8
+		case 0xFE: u8 = mmu->GetByteAt (PC++); SetFlagsSub (*reg_A, u8, 0, 0); break; // CP A, d8
+			
+		// 16bit Arithmetic / Logical
+		case 0x03: reg_BC++; break; // INC rr
+		case 0x13: reg_DE++; break; // INC rr
+		case 0x23: reg_HL++; break; // INC rr
+		case 0x33: SP++; break; // INC rr
+			
+		case 0x09: SetN (0); SetH (GetCarry (reg_HL, reg_BC, 12)); SetC (GetCarry (reg_HL, reg_BC, 16)); reg_HL += reg_BC; break; // ADD rr, rr
+		case 0x19: SetN (0); SetH (GetCarry (reg_HL, reg_DE, 12)); SetC (GetCarry (reg_HL, reg_DE, 16)); reg_HL += reg_DE; break; // ADD rr, rr
+		case 0x29: SetN (0); SetH (GetCarry (reg_HL, reg_HL, 12)); SetC (GetCarry (reg_HL, reg_HL, 16)); reg_HL += reg_HL; break; // ADD rr, rr
+		case 0x39: SetN (0); SetH (GetCarry (reg_HL, SP, 12)); SetC (GetCarry (reg_HL, SP, 16)); reg_HL += SP; break; // ADD rr, rr
+			
+		case 0x0B: reg_BC--; break; // DEC rr
+		case 0x1B: reg_DE--; break; // DEC rr
+		case 0x2B: reg_HL--; break; // DEC rr
+		case 0x3B: SP--; break; // DEC rr
+		
+		// 8bit Rotation / Shifts
+		case 0x07: SetZ (0); SetN (0); SetH (0); u8 = *reg_A >> 7; *reg_A <<= 1; *reg_A |= u8; SetC (u8); break; // RLCA
+		case 0x17: SetZ (0); SetN (0); SetH (0); u8 = *reg_A >> 7; *reg_A <<= 1; *reg_A |= flag_C; SetC (u8); break; // RLA
+			
+		case 0x0F: SetZ (0); SetN (0); SetH (0); u8 = *reg_A & 1; *reg_A >>= 1; *reg_A |= u8 << 7; SetC (u8); break; // RRCA
+		case 0x1F: SetZ (0); SetN (0); SetH (0); u8 = *reg_A & 1; *reg_A >>= 1; *reg_A |= flag_C << 7; SetC (u8); break; // RRA
+		
 		default:
 			printf ("[ERR] Unknown Opcode: 0x%02x\n", Instruction);
 	}

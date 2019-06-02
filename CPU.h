@@ -49,9 +49,18 @@ class CPU {
 		uint8_t Stopped = 0;
 		uint8_t InterruptsEnabled = 0;
 	
-		// Functions
+		// Functions - Stack
 		void StackPush (uint16_t Value);
 		uint16_t StackPop ();
+	
+		// Functions - Flags
+		void SetZ (uint8_t Value);
+		void SetN (uint8_t Value);
+		void SetH (uint8_t Value);
+		void SetC (uint8_t Value);
+		uint8_t GetCarry (uint16_t OpA, uint16_t OpB, uint8_t BitNo);
+		void SetFlagsAdd (uint8_t OpA, uint8_t OpB, uint8_t Carry, uint8_t CarrySetMode);
+		void SetFlagsSub (uint8_t OpA, uint8_t OpB, uint8_t Carry, uint8_t CarrySetMode);
 };
 
 #endif
