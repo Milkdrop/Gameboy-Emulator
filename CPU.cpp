@@ -22,10 +22,10 @@ const uint8_t ClocksPerInstruction[] = {
 
 CPU::CPU (MMU* _mmu) {
 	mmu = _mmu;
-	reg_AF = 0x1180;
-	reg_DE = 0xFF56;
-	reg_HL = 0x000D;
-	SP = 0xFFFE;
+	//reg_AF = 0x1180;
+	//reg_DE = 0xFF56;
+	//reg_HL = 0x000D;
+	//SP = 0xFFFE;
 }
 
 void CPU::Debug () {
@@ -39,17 +39,18 @@ void CPU::Debug () {
 	printf ("\n");
 	
 	for (int i = 0x10; i >= -0x10; i -= 2) {
-		printf ("0x%04x: 0x%04x\n", 0xDD02 + i, mmu->GetWordAt (0xDD02 + i));
+		//printf ("0x%04x: 0x%04x\n", 0xDD02 + i, mmu->GetWordAt (0xDD02 + i));
 	}
 }
 
 void CPU::Interrupt (uint8_t ID) {
+	printf ("Interrupting... %d\n", ID);
 	/*
 		0x0040 VBlank Handler
 		0x0048 LCDC Handler
 		0x0050 Timer Overflow Handler
 		0x0058 Serial Transfer Completion Handler
-		0x0060 P10-P13 High to Low Handler
+		0x0060 Joypad Input Handler
 	*/
 	
 	if (InterruptsEnabled) {
@@ -141,6 +142,8 @@ void CPU::Clock () {
 
 void CPU::Execute (uint8_t Instruction) {
 	ClockCount += ClocksPerInstruction [Instruction];
+	
+	printf ("0x%04x: Executing 0x%02x\n", PC - 1, Instruction);
 	
 	flag_Z = (*reg_F >> 7) & 1;
 	flag_N = (*reg_F >> 6) & 1;

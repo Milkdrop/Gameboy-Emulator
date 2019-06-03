@@ -1,5 +1,6 @@
 #include <stdint.h>
 #include <stdio.h>
+#include <SDL2/SDL.h>
 #include "MMU.h"
 #ifndef CPU_H
 #define CPU_H
@@ -32,7 +33,7 @@ class CPU {
 		uint8_t* reg_L = ((uint8_t*) &reg_HL);
 		
 		uint16_t SP = 0;
-		uint16_t PC = 0x100;
+		uint16_t PC = 0;
 	
 		// Flags - For Convenience
 		uint8_t flag_Z = 0;
