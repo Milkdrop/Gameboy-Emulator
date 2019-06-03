@@ -30,7 +30,8 @@ int main (int argc, char** argv) {
 	// Init Hardware
 	MMU* mmu = new MMU;
 	CPU* cpu = new CPU (mmu);
-	PPU* ppu = new PPU ("Gameboy", 160, 144, 1);
+	PPU* ppu = new PPU ("Gameboy", 2);
+	//SDL_RenderSetScale
 	LoadROM (mmu, 0x0000, argv[1]);
 	
 	// Loop
