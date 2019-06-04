@@ -140,10 +140,10 @@ void CPU::Clock () {
 	Execute (Instruction);
 }
 
+uint8_t Shown = 0;
+
 void CPU::Execute (uint8_t Instruction) {
 	ClockCount += ClocksPerInstruction [Instruction];
-	
-	printf ("0x%04x: Executing 0x%02x\n", PC - 1, Instruction);
 	
 	flag_Z = (*reg_F >> 7) & 1;
 	flag_N = (*reg_F >> 6) & 1;

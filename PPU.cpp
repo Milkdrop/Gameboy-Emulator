@@ -1,9 +1,8 @@
 #include "PPU.h"
 
-const uint32_t Black		= 0xff000000;
-const uint32_t DarkGray		= 0xff555555;
-const uint32_t LightGray	= 0xffaaaaaa;
-const uint32_t White		= 0xffffffff;
+const uint32_t Colors [4] = {0xffffffff, 0xffaaaaaa, 0xff555555, 0xff000000};
+
+uint32_t BGPalette [4];
 
 PPU::PPU (const char* Title, const uint16_t _PixelSize) {
 	PixelSize = _PixelSize;
@@ -23,18 +22,63 @@ inline void PPU::SetPixel (uint32_t CoordX, uint32_t CoordY, uint32_t Color) {
 	Pixels [PixelNo] = Color;
 }
 
-void PPU::Update (const uint8_t* VRAM, uint8_t* IOMap) {
-	uint32_t ColorToDraw = White;
+void PPU::Update (uint8_t* Memory, uint8_t* IOMap) {
+	uint16_t BGTable = 0x9800;
+	uint16_t BGTileTable = 0x9000;
+	uint8_t BGAddressingMode = 1; // Signed
 	
-	if (CurrentY % 4 == 1)
-		ColorToDraw = LightGray;
-	if (CurrentY % 4 == 2)
-		ColorToDraw = DarkGray;
-	if (CurrentY % 4 == 3)
-		ColorToDraw = Black;
+	if (GetBit (IOMap [0x40], 3))
+		BGTable = 0x9C00;
+	
+	if (GetBit (IOMap [0x40], 4)) {
+		BGTileTable = 0x8000;
+		BGAddressingMode = 0; // Unsigned
+	}
+	
+	/* LCDC TODO:
+	bits 1, 2, 5, 6
+	*/
+	
+	// Set Scrolling
+	uint8_t ScrollY = IOMap[0x42];
+	uint8_t ScrollX = IOMap[0x43];
+	
+	// Set BG Palette
+	BGPalette [0] = GetBit (IOMap [0x47], 0) | (GetBit (IOMap [0x47], 1) << 1);
+	BGPalette [1] = GetBit (IOMap [0x47], 2) | (GetBit (IOMap [0x47], 3) << 1);
+	BGPalette [2] = GetBit (IOMap [0x47], 4) | (GetBit (IOMap [0x47], 5) << 1);
+	BGPalette [3] = GetBit (IOMap [0x47], 6) | (GetBit (IOMap [0x47], 7) << 1);
 	
 	if (CurrentY < Height) {
 		for (int CurrentX = 0; CurrentX < Width; CurrentX++) {
+			uint32_t ColorToDraw = Colors [0];
+			uint8_t ActualX = CurrentX + ScrollX;
+			uint8_t ActualY = CurrentY + ScrollY;
+			
+			if (GetBit (IOMap [0x40], 0)) { // BG Display
+				uint8_t BGTile = Memory [BGTable + ((ActualY >> 3) << 5) + (ActualX >> 3)];
+				uint8_t PixelX = ActualX & 0x7;
+				uint8_t PixelY = ActualY & 0x7;
+				
+				uint8_t* BGTileData;
+				if (BGAddressingMode)
+					BGTileData = Memory + (BGTileTable + ((int8_t) BGTile) * 16);
+				else {
+					BGTileData = Memory + (BGTileTable + BGTile * 16);
+				}
+				
+				// First Byte: LSB of Color for Pixel (PixelX, PixelY)
+				// Second Byte: MSB ~~~
+				
+				uint8_t Color = (GetBit (BGTileData [PixelY * 2 + 1], 7 - PixelX) << 1) | GetBit (BGTileData [PixelY * 2], 7 - PixelX);
+				
+				ColorToDraw = Colors [BGPalette [Color]];
+			}
+			
+			if (GetBit (IOMap [0x40], 1)) { // Sprite Display
+				printf ("Display Sprites\n");
+			}
+			
 			SetPixel (CurrentX, CurrentY, ColorToDraw);
 		}
 	}

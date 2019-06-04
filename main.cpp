@@ -5,11 +5,22 @@
 #include "PPU.h"
 #include "MMU.h"
 #include "CPU.h"
+#include "utils.h"
+
+const char* ROMTypes[] = {
+	"ROM Only", "ROM+MBC1", "ROM+MBC1+RAM", "ROM+MBC1+RAM+BATT",
+	"Unknown", "ROM+MBC2", "ROM+MBC2+BATT", "Unknown",
+	"ROM+RAM", "ROM+RAM+BATTERY", "Unknown", "ROM+MMM01",
+	"ROM+MMM01+SRAM", "ROM+MMM01+SRAM+BATT", "Unknown", "Unknown",
+	"Unknown", "Unknown", "ROM+MBC3+RAM", "ROM+MBC3+RAM+BATT",
+	"Unknown", "Unknown", "Unknown", "Unknown", 
+	"Unknown", "ROM+MBC5", "ROM+MBC5+RAM", "ROM+MBC5+RAM+BATT",
+	"ROM+MBC5+RUMBLE", "ROM+MBC5+RUMBLE+SRAM", "ROM+MBC5+RUMBLE+SRAM+BATT", "Pocket Camera"
+};
 
 void OpenFileError (const char* Filename);
 void LoadROM (MMU* mmu, uint16_t Address, const char* Filename);
-uint8_t GetBit (uint8_t Value, uint8_t BitNo);
-void SetBit (uint8_t &Value, uint8_t BitNo, uint8_t Set);
+void AnalyzeROM (MMU* mmu);
 void CPULoop (CPU* cpu, MMU* mmu, PPU* ppu);
 	
 int main (int argc, char** argv) {
@@ -31,8 +42,10 @@ int main (int argc, char** argv) {
 	MMU* mmu = new MMU;
 	CPU* cpu = new CPU (mmu);
 	PPU* ppu = new PPU ("Gameboy", 2);
-	//SDL_RenderSetScale
-	LoadROM (mmu, 0x0000, argv[1]);
+	
+	LoadROM (mmu, 0x0000, argv[2]);
+	AnalyzeROM (mmu);
+	LoadROM (mmu, 0x0000, argv[1]); // overwrite with BootRom
 	
 	// Loop
 	CPULoop (cpu, mmu, ppu);
@@ -69,16 +82,32 @@ void LoadROM (MMU* mmu, uint16_t Address, const char* Filename) {
 	printf ("OK\n");
 }
 
-uint8_t GetBit (uint8_t Value, uint8_t BitNo) {
-	return (Value & (1 << BitNo)) != 0;
-}
-
-void SetBit (uint8_t &Value, uint8_t BitNo, uint8_t Set) {
-	if (Set) {
-		Value |= 1 << BitNo;
-	} else {
-		Value &= 0xFF ^ (1 << BitNo);
+void AnalyzeROM (MMU* mmu) {
+	printf ("ROM Info:\n");
+	
+	printf ("Name: ");
+	for (int i = 0x134; i <= 0x142; i++) {
+		printf ("%c", mmu->GetByteAt (i));
 	}
+	printf ("\n");
+	
+	if (mmu->GetByteAt (0x143) == 0x00)
+		printf ("GameBoy ROM\n");
+	else if (mmu->GetByteAt (0x143) == 0x80)
+		printf ("Color GameBoy ROM\n");
+	else
+		printf ("Unknown ROM\n");
+	
+	printf ("Rom Type: ");
+	uint8_t ROMType = mmu->GetByteAt (0x147);
+	if (ROMType == 0xFE)
+		printf ("Hudson HuC-3\n");
+	else if (ROMType == 0xFD)
+		printf ("Bandai TAMA5\n");
+	else if (ROMType < 0x20) {
+		printf ("%s\n", ROMTypes [ROMType]);
+	} else
+		printf ("Unknown\n");
 }
 
 /* IO TODO
@@ -182,11 +211,9 @@ void CPULoop (CPU* cpu, MMU* mmu, PPU* ppu) {
 		// Draw
 		if (CurrentTime - LastDraw >= 1000000 / (60 * 154) || LastDraw > CurrentTime) { // 60 Hz / 154 -> One Line
 			LastDraw = CurrentTime;
-			uint8_t LCDControl = IOMap [0x40];
 			
-			if (GetBit (LCDControl, 7)) { // LCD Operation
-				// TODO Drawing
-				ppu->Update (mmu->VRAM, IOMap);
+			if (GetBit (IOMap [0x40], 7)) { // LCD Operation
+				ppu->Update (mmu->Memory, IOMap);
 			}
 		}
 		

@@ -29,9 +29,8 @@ class MMU {
 		*/
 	
 		// Convenience Pointers
-		const uint8_t* VRAM = Memory + 0x8000;
 		uint8_t* IOMap = Memory + 0xFF00;
-	private:
+	
 		uint8_t Memory[0x10000];
 };
 
