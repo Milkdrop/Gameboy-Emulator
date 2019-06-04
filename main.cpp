@@ -18,10 +18,13 @@ const char* ROMTypes[] = {
 	"ROM+MBC5+RUMBLE", "ROM+MBC5+RUMBLE+SRAM", "ROM+MBC5+RUMBLE+SRAM+BATT", "Pocket Camera"
 };
 
+uint8_t ROM [2 * 1024 * 1024]; // 2 MB Max ROM Size
+uint8_t BootROM [256]; // Boot ROM Size
+
 void OpenFileError (const char* Filename);
-void LoadROM (MMU* mmu, uint16_t Address, const char* Filename);
+void LoadROM (const char* Filename, const uint8_t Type);
 void AnalyzeROM (MMU* mmu);
-void CPULoop (CPU* cpu, MMU* mmu, PPU* ppu);
+void CPULoop (CPU* cpu, MMU* mmu, PPU* ppu, uint8_t Boot);
 	
 int main (int argc, char** argv) {
 	if (argc < 3) {
@@ -43,12 +46,16 @@ int main (int argc, char** argv) {
 	CPU* cpu = new CPU (mmu);
 	PPU* ppu = new PPU ("Gameboy", 2);
 	
-	LoadROM (mmu, 0x0000, argv[2]);
+	LoadROM (argv[1], 1);
+	LoadROM (argv[2], 0);
+	mmu->SetBytesAt (0x0000, ROM, 0x4000);
+	mmu->SetBytesAt (0x0000, BootROM, 0x100);
 	AnalyzeROM (mmu);
-	LoadROM (mmu, 0x0000, argv[1]); // overwrite with BootRom
 	
 	// Loop
-	CPULoop (cpu, mmu, ppu);
+	CPULoop (cpu, mmu, ppu, 1); // Boot
+	mmu->SetBytesAt (0x0000, ROM, 0x100); // Load 0x100 ROM Area, for INTs etc.
+	CPULoop (cpu, mmu, ppu, 0); // Normal Loop
 	
 	// Cleanup
 	SDL_Quit ();
@@ -60,7 +67,7 @@ void OpenFileError (const char* Filename) {
 	exit(1);
 }
 
-void LoadROM (MMU* mmu, uint16_t Address, const char* Filename) {
+void LoadROM (const char* Filename, const uint8_t Type) {
 	printf ("Opening ROM %s...", Filename);
 	
 	FILE* ROMfd = fopen (Filename, "rb");
@@ -76,7 +83,12 @@ void LoadROM (MMU* mmu, uint16_t Address, const char* Filename) {
 	if (fread(Buffer, 1, ROMSize, ROMfd) != ROMSize)
 		OpenFileError (Filename);
 	
-	mmu->SetBytesAt (Address, Buffer, ROMSize);
+	switch (Type) {
+		case 0: memcpy (ROM, Buffer, ROMSize); break; // Boot ROM
+		case 1: memcpy (BootROM, Buffer, ROMSize); break; // Normal ROM
+		default: break;
+	}
+	
 	free (Buffer);
 	fclose (ROMfd);
 	printf ("OK\n");
@@ -116,7 +128,7 @@ FF04
 FF10 -> FF26 // Sound
 */
 
-void CPULoop (CPU* cpu, MMU* mmu, PPU* ppu) {
+void CPULoop (CPU* cpu, MMU* mmu, PPU* ppu, uint8_t Boot) {
 	// Main Loop Variables
 	SDL_Event ev;
 	const uint8_t *Keyboard = SDL_GetKeyboardState(NULL);
@@ -214,6 +226,9 @@ void CPULoop (CPU* cpu, MMU* mmu, PPU* ppu) {
 			
 			if (GetBit (IOMap [0x40], 7)) { // LCD Operation
 				ppu->Update (mmu->Memory, IOMap);
+				
+				if (IOMap [0x44] == 144) // VBlank interrupt
+					cpu->Interrupt (0);
 			}
 		}
 		
@@ -239,6 +254,9 @@ void CPULoop (CPU* cpu, MMU* mmu, PPU* ppu) {
 				}
 			}
 		}
+		
+		if (Boot && cpu->PC == 0x100) // Done Booting
+			return;
 		
 		if (!cpu->Debugging)
 			cpu->Clock ();

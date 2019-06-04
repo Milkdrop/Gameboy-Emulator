@@ -44,7 +44,6 @@ void CPU::Debug () {
 }
 
 void CPU::Interrupt (uint8_t ID) {
-	printf ("Interrupting... %d\n", ID);
 	/*
 		0x0040 VBlank Handler
 		0x0048 LCDC Handler

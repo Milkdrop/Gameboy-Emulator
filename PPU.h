@@ -17,7 +17,7 @@ private:
 	SDL_Window* MainWindow;
 	SDL_Renderer* MainRenderer;
 	SDL_Texture* MainTexture;
-	uint32_t Pixels [160 * 144];
+	uint16_t Pixels [160 * 144];
 	uint8_t CurrentY = 0;
 	
 	// Drawing Functions

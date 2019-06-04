@@ -9,9 +9,10 @@ uint8_t MMU::GetByteAt (uint16_t Address) {
 }
 
 void MMU::SetByteAt (uint16_t Address, uint8_t Value) {
-	if (Address == 0xFF01) {
-		printf ("%c", Value);
-		fflush (stdout);
+	switch (Address) {
+		case 0xFF01: printf ("%c", Value); fflush (stdout); break; // SB
+		case 0xFF46: memcpy (Memory + 0xFE00, Memory + (Value << 8), 0x100); break; // DMA
+		default: break;
 	}
 	
 	Memory [Address] = Value;

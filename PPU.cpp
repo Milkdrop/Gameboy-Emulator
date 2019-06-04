@@ -1,15 +1,17 @@
 #include "PPU.h"
 
-const uint32_t Colors [4] = {0xffffffff, 0xffaaaaaa, 0xff555555, 0xff000000};
+const uint16_t Colors [4] = {0xffff, 0xaaaa, 0x5555, 0x0000};
 
-uint32_t BGPalette [4];
+uint8_t BGPalette [4];
+uint8_t SpritePalette0 [4];
+uint8_t SpritePalette1 [4];
 
 PPU::PPU (const char* Title, const uint16_t _PixelSize) {
 	PixelSize = _PixelSize;
 	
 	MainWindow = SDL_CreateWindow (Title, SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED, Width * PixelSize, Height * PixelSize, SDL_WINDOW_SHOWN | SDL_WINDOW_RESIZABLE);
 	MainRenderer = SDL_CreateRenderer(MainWindow, -1, SDL_RENDERER_ACCELERATED);
-	MainTexture = SDL_CreateTexture (MainRenderer, SDL_PIXELFORMAT_ARGB8888, SDL_TEXTUREACCESS_STREAMING, Width, Height);
+	MainTexture = SDL_CreateTexture (MainRenderer, SDL_PIXELFORMAT_ARGB4444, SDL_TEXTUREACCESS_STREAMING, Width, Height);
 	SDL_SetRenderDrawColor(MainRenderer, 0x00, 0x00, 0x00, 0x00);
 	SDL_RenderClear(MainRenderer);
 	
@@ -36,18 +38,12 @@ void PPU::Update (uint8_t* Memory, uint8_t* IOMap) {
 	}
 	
 	/* LCDC TODO:
-	bits 1, 2, 5, 6
+	bits 2, 5, 6
 	*/
 	
 	// Set Scrolling
 	uint8_t ScrollY = IOMap[0x42];
 	uint8_t ScrollX = IOMap[0x43];
-	
-	// Set BG Palette
-	BGPalette [0] = GetBit (IOMap [0x47], 0) | (GetBit (IOMap [0x47], 1) << 1);
-	BGPalette [1] = GetBit (IOMap [0x47], 2) | (GetBit (IOMap [0x47], 3) << 1);
-	BGPalette [2] = GetBit (IOMap [0x47], 4) | (GetBit (IOMap [0x47], 5) << 1);
-	BGPalette [3] = GetBit (IOMap [0x47], 6) | (GetBit (IOMap [0x47], 7) << 1);
 	
 	if (CurrentY < Height) {
 		for (int CurrentX = 0; CurrentX < Width; CurrentX++) {
@@ -56,15 +52,21 @@ void PPU::Update (uint8_t* Memory, uint8_t* IOMap) {
 			uint8_t ActualY = CurrentY + ScrollY;
 			
 			if (GetBit (IOMap [0x40], 0)) { // BG Display
+				// Set BG Palette
+				BGPalette [0] = GetBit (IOMap [0x47], 0) | (GetBit (IOMap [0x47], 1) << 1);
+				BGPalette [1] = GetBit (IOMap [0x47], 2) | (GetBit (IOMap [0x47], 3) << 1);
+				BGPalette [2] = GetBit (IOMap [0x47], 4) | (GetBit (IOMap [0x47], 5) << 1);
+				BGPalette [3] = GetBit (IOMap [0x47], 6) | (GetBit (IOMap [0x47], 7) << 1);
+				
 				uint8_t BGTile = Memory [BGTable + ((ActualY >> 3) << 5) + (ActualX >> 3)];
 				uint8_t PixelX = ActualX & 0x7;
 				uint8_t PixelY = ActualY & 0x7;
 				
 				uint8_t* BGTileData;
 				if (BGAddressingMode)
-					BGTileData = Memory + (BGTileTable + ((int8_t) BGTile) * 16);
+					BGTileData = Memory + (BGTileTable + (int8_t) BGTile * 16);
 				else {
-					BGTileData = Memory + (BGTileTable + BGTile * 16);
+					BGTileData = Memory + (BGTileTable + (BGTile << 4));
 				}
 				
 				// First Byte: LSB of Color for Pixel (PixelX, PixelY)
@@ -76,7 +78,15 @@ void PPU::Update (uint8_t* Memory, uint8_t* IOMap) {
 			}
 			
 			if (GetBit (IOMap [0x40], 1)) { // Sprite Display
-				printf ("Display Sprites\n");
+				// Set Sprite Palettes
+				SpritePalette0 [1] = GetBit (IOMap [0x48], 2) | (GetBit (IOMap [0x48], 3) << 1);
+				SpritePalette0 [2] = GetBit (IOMap [0x48], 4) | (GetBit (IOMap [0x48], 5) << 1);
+				SpritePalette0 [3] = GetBit (IOMap [0x48], 6) | (GetBit (IOMap [0x48], 7) << 1);
+
+				SpritePalette1 [1] = GetBit (IOMap [0x49], 2) | (GetBit (IOMap [0x49], 3) << 1);
+				SpritePalette1 [2] = GetBit (IOMap [0x49], 4) | (GetBit (IOMap [0x49], 5) << 1);
+				SpritePalette1 [3] = GetBit (IOMap [0x49], 6) | (GetBit (IOMap [0x49], 7) << 1);
+				//printf ("Display Sprites\n");
 			}
 			
 			SetPixel (CurrentX, CurrentY, ColorToDraw);
@@ -87,7 +97,7 @@ void PPU::Update (uint8_t* Memory, uint8_t* IOMap) {
 	IOMap [0x44] = CurrentY; // Update current line that's being scanned
 	
 	if (CurrentY == 0) { // End of Frame
-		SDL_UpdateTexture (MainTexture, NULL, Pixels, 4 * Width);
+		SDL_UpdateTexture (MainTexture, NULL, Pixels, 2 * Width);
 		SDL_RenderCopy (MainRenderer, MainTexture, NULL, NULL);
 		SDL_RenderPresent (MainRenderer);
 	}
