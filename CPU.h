@@ -12,7 +12,7 @@ class CPU {
 		void Debug ();
 		void Interrupt (uint8_t ID);
 	
-		uint64_t ClockCount = 0;
+		uint32_t ClockCount = 0;
 		uint8_t Debugging = 0;
 		uint16_t PC = 0;
 	private:

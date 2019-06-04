@@ -9,7 +9,9 @@
 class PPU {
 public:
 	PPU (const char* Title, const uint16_t _PixelSize);
+	uint8_t OAMSearch (uint8_t* Memory, uint8_t* IOMap);
 	void Update (uint8_t* Memory, uint8_t* IOMap);
+	uint8_t CurrentY = 0;
 private:
 	uint16_t PixelSize;
 	uint16_t Width = 160; // 160
@@ -18,7 +20,7 @@ private:
 	SDL_Renderer* MainRenderer;
 	SDL_Texture* MainTexture;
 	uint16_t Pixels [160 * 144];
-	uint8_t CurrentY = 0;
+	uint8_t OAMQueue [10 * 4]; // 10 Sprites, 4 Bytes each
 	
 	// Drawing Functions
 	void SetPixel (uint32_t CoordX, uint32_t CoordY, uint32_t Color);

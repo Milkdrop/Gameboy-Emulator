@@ -1,6 +1,6 @@
 #include <stdint.h>
 #include <stdio.h>
-#include <chrono>
+#include <time.h>
 #include <SDL2/SDL.h>
 #include "PPU.h"
 #include "MMU.h"
@@ -95,7 +95,7 @@ void LoadROM (const char* Filename, const uint8_t Type) {
 }
 
 void AnalyzeROM (MMU* mmu) {
-	printf ("ROM Info:\n");
+	printf ("ROM INFO\n");
 	
 	printf ("Name: ");
 	for (int i = 0x134; i <= 0x142; i++) {
@@ -128,22 +128,40 @@ FF04
 FF10 -> FF26 // Sound
 */
 
+// Clock Speed: 4.194304 MHz
 void CPULoop (CPU* cpu, MMU* mmu, PPU* ppu, uint8_t Boot) {
 	// Main Loop Variables
 	SDL_Event ev;
 	const uint8_t *Keyboard = SDL_GetKeyboardState(NULL);
 	uint8_t* IOMap = mmu->IOMap;
 	uint64_t CurrentTime = 0;
-	uint64_t LastInput = 0;
-	uint64_t LastDraw = 0;
-	uint64_t LastTimer = 0;
 	uint64_t LastDebug = 0;
+	uint64_t LastInput = 0;
+	uint64_t LastTimer = 0;
 	uint8_t PressDebug = 0;
 	uint8_t Quit = 0;
+	
+	// Timing
+	uint32_t LastLineDraw = 0;
+	uint32_t CurrentPPUMode = 1;
+	uint64_t ClocksPerMS = 4194;
+	uint64_t LastClock = 0;
+	uint8_t SpriteCount = 0;
+	uint64_t LastLoop = 0;
 	
 	// Main Loop
 	while (!Quit) {
 		CurrentTime = clock(); // In Microseconds (On *UNIX)
+		
+		if (CurrentTime - LastLoop <= 1000) {
+			if (cpu->ClockCount - LastClock >= ClocksPerMS) { // Throttle
+				// TODO: nanosleep ?
+				continue;
+			}
+		} else {
+			LastLoop = CurrentTime;
+			LastClock = cpu->ClockCount;
+		}
 		
 		// Debug / Info
 		if (CurrentTime - LastDebug >= 5000000 || LastDebug > CurrentTime) { // 30 Hz
@@ -220,15 +238,65 @@ void CPULoop (CPU* cpu, MMU* mmu, PPU* ppu, uint8_t Boot) {
 			}
 		}
 		
-		// Draw
-		if (CurrentTime - LastDraw >= 1000000 / (60 * 154) || LastDraw > CurrentTime) { // 60 Hz / 154 -> One Line
-			LastDraw = CurrentTime;
-			
-			if (GetBit (IOMap [0x40], 7)) { // LCD Operation
-				ppu->Update (mmu->Memory, IOMap);
+		// IOMap 0x40 - LCDC
+		// IOMap 0x41 - LCD STAT
+		
+		// Rendering
+		if (GetBit (IOMap [0x40], 7)) { // LCD Operation
+			uint32_t CurrentLineClock = cpu->ClockCount - LastLineDraw;
+			uint32_t PixelTransferDuration = 168 + (SpriteCount * (291 - 168)) / 10; // 10 Sprites should cause maximum duration = 291 Clocks
 				
-				if (IOMap [0x44] == 144) // VBlank interrupt
-					cpu->Interrupt (0);
+			if (ppu->CurrentY < 144) {
+				if (CurrentLineClock <= 80) { // OAM Period
+					if (CurrentPPUMode == 1) {
+						CurrentPPUMode = 2;
+						SpriteCount = ppu->OAMSearch (mmu->Memory, IOMap);
+						
+						SetBit (IOMap [0x41], 0, 0); // Set them now so that the CPU can service the INT correctly
+						SetBit (IOMap [0x41], 1, 1);
+						
+						if (GetBit (IOMap [0x41], 5))
+							cpu->Interrupt (1);
+					}
+				} else if (CurrentLineClock <= 80 + PixelTransferDuration) { // Pixel Transfer
+					if (CurrentPPUMode == 2) {
+						CurrentPPUMode = 3;
+						
+						SetBit (IOMap [0x41], 0, 1);
+						SetBit (IOMap [0x41], 1, 1);
+					}
+				} else { // HBlank
+					if (CurrentPPUMode == 3) {
+						CurrentPPUMode = 0;
+						
+						SetBit (IOMap [0x41], 0, 0);
+						SetBit (IOMap [0x41], 1, 0);
+						
+						if (GetBit (IOMap [0x41], 3))
+							cpu->Interrupt (1);
+					}
+				}
+			} else {
+				if (CurrentPPUMode == 0) { // VBlank
+					CurrentPPUMode = 1;
+					
+					SetBit (IOMap [0x41], 0, 1);
+					SetBit (IOMap [0x41], 1, 0);
+					
+					if (GetBit (IOMap [0x41], 4))
+						cpu->Interrupt (1);
+				}
+			}
+			
+			if (CurrentLineClock >= (144 << 2)) { // Passed On a New Line
+				LastLineDraw = cpu->ClockCount;
+				ppu->Update (mmu->Memory, IOMap);
+				if (ppu->CurrentY == IOMap [0x45]) { // Coincidence LY, LYC
+					SetBit (IOMap [0x41], 2, 1);
+					if (GetBit (IOMap [0x41], 6))
+						cpu->Interrupt (1);
+				} else
+					SetBit (IOMap [0x41], 2, 0);
 			}
 		}
 		
@@ -258,7 +326,11 @@ void CPULoop (CPU* cpu, MMU* mmu, PPU* ppu, uint8_t Boot) {
 		if (Boot && cpu->PC == 0x100) // Done Booting
 			return;
 		
-		if (!cpu->Debugging)
+		if (!cpu->Debugging) {
+			uint8_t OldDMA = IOMap [0x46];
 			cpu->Clock ();
-	}
+			if (IOMap [0x46] != OldDMA) // DMA Write
+				cpu->ClockCount += 160;
+		}
+	} 
 }
