@@ -1,7 +1,7 @@
 #include <stdint.h>
 #include <SDL2/SDL.h>
 #include <stdio.h>
-#include <cstring>
+#include <stdlib.h>
 #include "utils.h"
 #ifndef PPU_H
 #define PPU_H
@@ -9,6 +9,7 @@
 class PPU {
 public:
 	PPU (const char* Title, const uint16_t _PixelSize);
+	~PPU ();
 	void OAMSearch (uint8_t* Memory, uint8_t* IOMap);
 	void Update (uint8_t* Memory, uint8_t* IOMap);
 	uint8_t CurrentY = 0;

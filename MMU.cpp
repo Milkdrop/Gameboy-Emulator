@@ -4,6 +4,13 @@ MMU::MMU () {
 	memset (Memory, 0, sizeof(Memory));
 }
 
+MMU::~MMU () {
+	free (ROM);
+	free (ExternalRAM);
+	free (RTCRegister);
+	free (Memory);
+}
+
 uint8_t MMU::GetByteAt (uint16_t Address) {
 	if (Address >= 0xE000 && Address < 0xFE00) // 8KB Internal RAM Echo
 		Address -= 0x2000;

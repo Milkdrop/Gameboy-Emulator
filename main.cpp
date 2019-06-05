@@ -8,13 +8,18 @@
 #include "utils.h"
 
 void OpenFileError (const char* Filename);
-void LoadROM (MMU* mmu, const char* Filename);
+void LoadROM (MMU* mmu);
 void AnalyzeROM (MMU* mmu);
 void CPULoop (CPU* cpu, MMU* mmu, PPU* ppu);
 
+void SaveGame (MMU* mmu);
+void SaveState (uint8_t ID);
+void LoadState (uint8_t ID);
+
 uint8_t ROMwBattery [] = {0x03, 0x06, 0x09, 0x0D, 0x0F, 0x10, 0x1B, 0x1E, 0x20, 0xFF};
 uint8_t ROMwRAM [] = {0x02, 0x03, 0x06, 0x08, 0x09, 0x0C, 0x0D, 0x10, 0x12, 0x13, 0x1A, 0x1B, 0x1D, 0x1E, 0x20, 0x22, 0xFF};
-char* SavefileName;
+
+char* ROMFilename;
 
 int main (int argc, char** argv) {
 	if (argc < 2) {
@@ -36,7 +41,8 @@ int main (int argc, char** argv) {
 	CPU* cpu = new CPU (mmu);
 	PPU* ppu = new PPU ("Gameboy", 2);
 	
-	LoadROM (mmu, argv[1]);
+	ROMFilename = argv[1];
+	LoadROM (mmu);
 	
 	// Loop
 	CPULoop (cpu, mmu, ppu);
@@ -51,21 +57,21 @@ void OpenFileError (const char* Filename) {
 	exit(1);
 }
 
-void LoadROM (MMU* mmu, const char* Filename) {
-	printf ("Opening ROM %s...", Filename);
+void LoadROM (MMU* mmu) {
+	printf ("Opening ROM %s...", ROMFilename);
 	
-	FILE* ROMfd = fopen (Filename, "rb");
+	FILE* ROMfd = fopen (ROMFilename, "rb");
 	if (ROMfd == 0)
-		OpenFileError (Filename);
+		OpenFileError (ROMFilename);
 	
 	fseek (ROMfd, 0, SEEK_END);
 	uint32_t ROMSize = ftell (ROMfd);
-	ROMfd = freopen (Filename, "rb", ROMfd);
+	ROMfd = freopen (ROMFilename, "rb", ROMfd);
 	
 	uint8_t* Buffer = (uint8_t*) malloc (ROMSize);
 	
 	if (fread(Buffer, 1, ROMSize, ROMfd) != ROMSize)
-		OpenFileError (Filename);
+		OpenFileError (ROMFilename);
 	
 	memcpy (mmu->ROM, Buffer, ROMSize);
 	mmu->SetBytesAt (0x0000, Buffer, 0x10000);
@@ -75,8 +81,8 @@ void LoadROM (MMU* mmu, const char* Filename) {
 	
 	AnalyzeROM (mmu);
 	
-	SavefileName = (char*) malloc (strlen (Filename) + 4);
-	strcpy (SavefileName, Filename);
+	char* SavefileName = (char*) malloc (strlen (ROMFilename) + 4);
+	strcpy (SavefileName, ROMFilename);
 	strcat (SavefileName, ".sav");
 	
 	FILE* Savefile = fopen (SavefileName, "r");
@@ -85,7 +91,11 @@ void LoadROM (MMU* mmu, const char* Filename) {
 		
 		if (fread (mmu->ExternalRAM, 1, 0x2000 * mmu->ExternalRAMSize, Savefile) != 0x2000 * mmu->ExternalRAMSize)
 			OpenFileError (SavefileName);
+		
+		fclose (Savefile);
 	}
+	
+	free (SavefileName);
 }
 
 void AnalyzeROM (MMU* mmu) {
@@ -181,6 +191,32 @@ void AnalyzeROM (MMU* mmu) {
 	mmu->ROMRAM = ROMRAM;
 }
 
+void SaveGame (MMU* mmu) {
+	if (mmu->ExternalRAMSize == 0) {
+		printf ("[WARN] ROM Doesn't have any External RAM to save!\n");
+	} else {
+		char* SavefileName = (char*) malloc (strlen (ROMFilename) + 5);
+		strcpy (SavefileName, ROMFilename);
+		strcat (SavefileName, ".sav");
+		printf ("[INFO] Saving External ROM to %s\n", SavefileName);
+
+		FILE* Savefile = fopen (SavefileName, "wb");
+		fwrite (mmu->ExternalRAM, 1, 0x2000 * mmu->ExternalRAMSize, Savefile);
+		fclose (Savefile);
+		free (SavefileName);
+	}
+}
+
+void SaveState (uint8_t ID) {
+	char* StateName = (char*) malloc (strlen (ROMFilename) + 9);
+	strcpy (StateName, ROMFilename);
+	strcat (StateName, ".state");
+	snprintf (StateName + strlen(StateName), 4, "%d", ID);
+	
+	printf ("[INFO] Saving State %d to %s\n", ID, StateName);
+	// TODO
+}
+
 /* IO TODO
 FF02
 FF04
@@ -198,7 +234,8 @@ void CPULoop (CPU* cpu, MMU* mmu, PPU* ppu) {
 	uint64_t LastTimer = 0;
 	uint64_t LastDiv = 0;
 	uint8_t PressDebug = 0;
-	uint8_t PressSave = 0;
+	uint8_t PressControlS = 0;
+	uint8_t PressControlR = 0;
 	uint8_t Quit = 0;
 	
 	// Timing
@@ -251,21 +288,40 @@ void CPULoop (CPU* cpu, MMU* mmu, PPU* ppu) {
 					PressDebug = 0;
 			}
 			
-			if ((Keyboard [SDL_SCANCODE_LCTRL] || Keyboard [SDL_SCANCODE_RCTRL]) && Keyboard [SDL_SCANCODE_S]) { // Save external RAM
-				if (PressSave == 0) {
-					PressSave = 1;
-					if (mmu->ExternalRAMSize == 0) {
-						printf ("[WARN] ROM Doesn't have any External RAM to save!\n");
-					} else {
-						printf ("[INFO] Saving External ROM to %s\n", SavefileName);
-
-						FILE* Savefile = fopen (SavefileName, "wb");
-						fwrite (mmu->ExternalRAM, 1, 0x2000 * mmu->ExternalRAMSize, Savefile);
-						fclose (Savefile);
+			if ((Keyboard [SDL_SCANCODE_LCTRL] || Keyboard [SDL_SCANCODE_RCTRL])) { // Save external RAM
+					
+				if (Keyboard [SDL_SCANCODE_S]) { // Save game
+					if (PressControlS == 0) {
+						PressControlS = 1;
+						SaveGame (mmu);
 					}
-				}
-			} else
-				PressSave = 0;
+				} else
+					PressControlS = 0;
+				
+				if (Keyboard [SDL_SCANCODE_R]) { // Reset
+					if (PressControlR == 0) {
+						PressControlR = 1;
+						
+						printf ("[INFO] Reseting State...\n");
+						free (mmu);
+						free (cpu);
+						free (ppu);
+
+						mmu = new MMU;
+						cpu = new CPU (mmu);
+						ppu = new PPU ("Gameboy", 2);
+
+						LoadROM (mmu);
+						IOMap = mmu->IOMap;
+						
+						LastLineDraw = 0;
+						CurrentPPUMode = 1;
+						LastClock = 0;
+						LastLoop = 0;
+					}
+				} else
+					PressControlR = 0;
+			}
 		}
 		
 		// Input - GB

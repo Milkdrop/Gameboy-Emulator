@@ -1,5 +1,6 @@
 #include <stdint.h>
 #include <stdio.h>
+#include <stdlib.h>
 #include <cstring>
 #ifndef MMU_H
 #define MMU_H
@@ -7,6 +8,7 @@
 class MMU {
 	public:
 		MMU ();
+		~MMU ();
 		uint8_t GetByteAt (uint16_t Address);
 		void SetByteAt (uint16_t Address, uint8_t Value);
 		void SetBytesAt (uint16_t Address, uint8_t* Buffer, size_t BufferSize);

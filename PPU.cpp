@@ -18,6 +18,11 @@ PPU::PPU (const char* Title, const uint16_t _PixelSize) {
 	SDL_RenderSetLogicalSize (MainRenderer, Width, Height);
 }
 
+PPU::~PPU () {
+	free (Pixels);
+	free (OAMQueue);
+}
+
 inline void PPU::SetPixel (uint32_t CoordX, uint32_t CoordY, uint32_t Color) {
 	uint32_t PixelNo = CoordY * Width + CoordX;
 	Pixels [PixelNo] = Color;
