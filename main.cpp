@@ -14,6 +14,7 @@ void CPULoop (CPU* cpu, MMU* mmu, PPU* ppu);
 
 uint8_t ROMwBattery [] = {0x03, 0x06, 0x09, 0x0D, 0x0F, 0x10, 0x1B, 0x1E, 0x20, 0xFF};
 uint8_t ROMwRAM [] = {0x02, 0x03, 0x06, 0x08, 0x09, 0x0C, 0x0D, 0x10, 0x12, 0x13, 0x1A, 0x1B, 0x1D, 0x1E, 0x20, 0x22, 0xFF};
+char* SavefileName;
 
 int main (int argc, char** argv) {
 	if (argc < 2) {
@@ -36,7 +37,6 @@ int main (int argc, char** argv) {
 	PPU* ppu = new PPU ("Gameboy", 2);
 	
 	LoadROM (mmu, argv[1]);
-	AnalyzeROM (mmu);
 	
 	// Loop
 	CPULoop (cpu, mmu, ppu);
@@ -72,6 +72,20 @@ void LoadROM (MMU* mmu, const char* Filename) {
 	free (Buffer);
 	fclose (ROMfd);
 	printf ("OK\n");
+	
+	AnalyzeROM (mmu);
+	
+	SavefileName = (char*) malloc (strlen (Filename) + 4);
+	strcpy (SavefileName, Filename);
+	strcat (SavefileName, ".sav");
+	
+	FILE* Savefile = fopen (SavefileName, "r");
+	if (Savefile != NULL) {
+		printf ("[INFO] Found savefile for game at %s\n", SavefileName);
+		
+		if (fread (mmu->ExternalRAM, 1, 0x2000 * mmu->ExternalRAMSize, Savefile) != 0x2000 * mmu->ExternalRAMSize)
+			OpenFileError (SavefileName);
+	}
 }
 
 void AnalyzeROM (MMU* mmu) {
@@ -93,7 +107,7 @@ void AnalyzeROM (MMU* mmu) {
 	uint8_t ROMType = 0; // Actual ROM Type
 	uint8_t ROMBattery = 0;
 	uint8_t ROMRAM = 0;
-	uint8_t CartridgeROMType = mmu->GetByteAt (0x147);
+	uint8_t CartridgeROMType = mmu->GetByteAt (0x0147);
 	
 	if (CartridgeROMType == 0x00)
 		ROMType = 0; // ROM Only
@@ -113,6 +127,18 @@ void AnalyzeROM (MMU* mmu) {
 		ROMType = 6; // MBC6
 	else if (CartridgeROMType < 0x23)
 		ROMType = 7; // MBC7
+	
+	uint8_t ExternalRAMSize = mmu->GetByteAt (0x0149);
+	
+	switch (ExternalRAMSize) {
+		case 0: mmu->ExternalRAMSize = 0; break;
+		case 1: mmu->ExternalRAMSize = 1; break;
+		case 2: mmu->ExternalRAMSize = 1; break;
+		case 3: mmu->ExternalRAMSize = 4; break;
+		case 4: mmu->ExternalRAMSize = 16; break;
+		case 5: mmu->ExternalRAMSize = 8; break;
+		default: break;
+	}
 	
 	uint8_t ROMwBatteryCount = sizeof (ROMwBattery);
 	uint8_t ROMwRAMCount = sizeof (ROMwRAM);
@@ -135,6 +161,7 @@ void AnalyzeROM (MMU* mmu) {
 		case 5: printf ("MBC5\n"); break;
 		case 6: printf ("MBC6\n"); break;
 		case 7: printf ("MBC7\n"); break;
+		default: break;
 	}
 	
 	printf ("ROM Battery: ");
@@ -171,6 +198,7 @@ void CPULoop (CPU* cpu, MMU* mmu, PPU* ppu) {
 	uint64_t LastTimer = 0;
 	uint64_t LastDiv = 0;
 	uint8_t PressDebug = 0;
+	uint8_t PressSave = 0;
 	uint8_t Quit = 0;
 	
 	// Timing
@@ -187,6 +215,11 @@ void CPULoop (CPU* cpu, MMU* mmu, PPU* ppu) {
 		
 		if (CurrentTime - LastLoop <= 1000) {
 			if (cpu->ClockCount - LastClock >= ClocksPerMS && !Keyboard [SDL_SCANCODE_SPACE]) { // Throttle - Space for max speed
+				// TODO: nanosleep ?
+				continue;
+			}
+			
+			if (cpu->ClockCount - LastClock >= (ClocksPerMS >> 2) && Keyboard [SDL_SCANCODE_BACKSPACE]) { // x4 slow motion
 				// TODO: nanosleep ?
 				continue;
 			}
@@ -217,6 +250,22 @@ void CPULoop (CPU* cpu, MMU* mmu, PPU* ppu) {
 				} else
 					PressDebug = 0;
 			}
+			
+			if ((Keyboard [SDL_SCANCODE_LCTRL] || Keyboard [SDL_SCANCODE_RCTRL]) && Keyboard [SDL_SCANCODE_S]) { // Save external RAM
+				if (PressSave == 0) {
+					PressSave = 1;
+					if (mmu->ExternalRAMSize == 0) {
+						printf ("[WARN] ROM Doesn't have any External RAM to save!\n");
+					} else {
+						printf ("[INFO] Saving External ROM to %s\n", SavefileName);
+
+						FILE* Savefile = fopen (SavefileName, "wb");
+						fwrite (mmu->ExternalRAM, 1, 0x2000 * mmu->ExternalRAMSize, Savefile);
+						fclose (Savefile);
+					}
+				}
+			} else
+				PressSave = 0;
 		}
 		
 		// Input - GB

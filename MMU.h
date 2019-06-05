@@ -31,7 +31,7 @@ class MMU {
 	
 		// ROM Config
 		uint8_t ROM [8 * 1024 * 1024]; // 8MB Max
-		uint8_t ExternalRAM [0x2000][16]; // 16 RAM Banks Max
+		uint8_t ExternalRAM [16 * 0x2000]; // 16 RAM Banks Max
 		uint8_t ROMType = 0;
 		uint8_t ROMBattery = 0;
 		uint8_t ROMRAM = 0;
@@ -42,6 +42,7 @@ class MMU {
 		uint8_t CurrentROMBank = 1;
 		uint8_t SelectRAMBank = 0;
 		uint8_t RTCRegister [0x0D];
+		uint8_t ExternalRAMSize = 0;
 	
 		// Convenience Pointers
 		uint8_t* IOMap = Memory + 0xFF00;

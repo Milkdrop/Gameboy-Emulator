@@ -11,7 +11,7 @@ uint8_t MMU::GetByteAt (uint16_t Address) {
 	if (ROMType == 1) {
 		if (ExternalRAMEnabled) {
 			if (Address >= 0xA000 && Address < 0xC000) { // Read from External RAM
-				return ExternalRAM [Address - 0xA000][CurrentRAMBank];
+				return ExternalRAM [0x2000 * CurrentRAMBank + (Address - 0xA000)];
 			}
 		}
 		
@@ -20,7 +20,7 @@ uint8_t MMU::GetByteAt (uint16_t Address) {
 	} else if (ROMType == 3) {
 		if (Address >= 0xA000 && Address < 0xC000) { // Read from External RAM / RTC
 			if (CurrentRAMBank <= 0x07)
-				return ExternalRAM [Address - 0xA000][CurrentRAMBank];
+				return ExternalRAM [0x2000 * CurrentRAMBank + (Address - 0xA000)];
 			else
 				return RTCRegister [CurrentRAMBank];
 		}
@@ -76,7 +76,7 @@ void MMU::SetByteAt (uint16_t Address, uint8_t Value) {
 			return;
 		} else if (Address >= 0xA000 && Address < 0xC000) { // Write to External RAM
 			if (ExternalRAMEnabled)
-				ExternalRAM [Address - 0xA000][CurrentRAMBank] = Value;
+				ExternalRAM [0x2000 * CurrentRAMBank + (Address - 0xA000)] = Value;
 			return;
 		}
 		
@@ -97,9 +97,9 @@ void MMU::SetByteAt (uint16_t Address, uint8_t Value) {
 			CurrentRAMBank = Value;
 			return;
 		} else if (Address >= 0xA000 && Address < 0xC000) { // Write to External RAM / RTC
-			if (CurrentRAMBank <= 0x07)
-				ExternalRAM [Address - 0xA000][CurrentRAMBank] = Value;
-			else
+			if (CurrentRAMBank <= 0x07) {
+				ExternalRAM [0x2000 * CurrentRAMBank + (Address - 0xA000)] = Value;
+			} else
 				RTCRegister [CurrentRAMBank] = Value;
 			return;
 		} else if (Address >= 0x6000 && Address < 0x8000) {
