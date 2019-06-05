@@ -741,6 +741,6 @@ void CPU::Execute (uint8_t Instruction) {
 		case 0x1F: SetZ (0); SetN (0); SetH (0); u8 = *reg_A & 1; *reg_A >>= 1; *reg_A |= flag_C << 7; SetC (u8); break; // RRA
 		
 		default:
-			printf ("[ERR] Unknown Opcode: 0x%02x\n", Instruction);
+			printf ("[ERR] Unknown Opcode: 0x%02x At 0x%04x\n", Instruction, PC - 1);
 	}
 }

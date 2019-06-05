@@ -18,7 +18,7 @@ const char* ROMTypes[] = {
 	"ROM+MBC5+RUMBLE", "ROM+MBC5+RUMBLE+SRAM", "ROM+MBC5+RUMBLE+SRAM+BATT", "Pocket Camera"
 };
 
-uint8_t ROM [2 * 1024 * 1024]; // 2 MB Max ROM Size
+uint8_t ROM [8 * 1024 * 1024]; // 8 MB Max ROM Size
 uint8_t BootROM [256]; // Boot ROM Size
 
 void OpenFileError (const char* Filename);
@@ -48,13 +48,14 @@ int main (int argc, char** argv) {
 	
 	LoadROM (argv[1], 1);
 	LoadROM (argv[2], 0);
-	mmu->SetBytesAt (0x0000, ROM, 0x4000);
+	mmu->SetBytesAt (0x0000, ROM, 0xC000);
 	mmu->SetBytesAt (0x0000, BootROM, 0x100);
 	AnalyzeROM (mmu);
 	
 	// Loop
 	CPULoop (cpu, mmu, ppu, 1); // Boot
 	mmu->SetBytesAt (0x0000, ROM, 0x100); // Load 0x100 ROM Area, for INTs etc.
+	
 	CPULoop (cpu, mmu, ppu, 0); // Normal Loop
 	
 	// Cleanup
@@ -144,9 +145,9 @@ void CPULoop (CPU* cpu, MMU* mmu, PPU* ppu, uint8_t Boot) {
 	// Timing
 	uint32_t LastLineDraw = 0;
 	uint32_t CurrentPPUMode = 1;
+	uint32_t PixelTransferDuration = 0;
 	uint64_t ClocksPerMS = 4194;
 	uint64_t LastClock = 0;
-	uint8_t SpriteCount = 0;
 	uint64_t LastLoop = 0;
 	
 	// Main Loop
@@ -170,7 +171,7 @@ void CPULoop (CPU* cpu, MMU* mmu, PPU* ppu, uint8_t Boot) {
 			cpu->ClockCount = 0;
 		}
 		
-		// Input
+		// Input - SDL
 		if (CurrentTime - LastInput >= 1000000 / 30 || LastInput > CurrentTime) { // 30 Hz
 			LastInput = CurrentTime;
 			
@@ -179,50 +180,6 @@ void CPULoop (CPU* cpu, MMU* mmu, PPU* ppu, uint8_t Boot) {
 					Quit = 1;
 				}
 			}
-			
-			uint8_t JoypadPort = 0;
-			
-			if (Keyboard [SDL_SCANCODE_RIGHT]) {
-				SetBit (JoypadPort, 5, 1);
-				SetBit (JoypadPort, 0, 1);
-			}
-			
-			if (Keyboard [SDL_SCANCODE_LEFT]) {
-				SetBit (JoypadPort, 5, 1);
-				SetBit (JoypadPort, 1, 1);
-			}
-			
-			if (Keyboard [SDL_SCANCODE_UP]) {
-				SetBit (JoypadPort, 5, 1);
-				SetBit (JoypadPort, 2, 1);
-			}
-			
-			if (Keyboard [SDL_SCANCODE_DOWN]) {
-				SetBit (JoypadPort, 5, 1);
-				SetBit (JoypadPort, 3, 1);
-			}
-			
-			if (Keyboard [SDL_SCANCODE_A]) {
-				SetBit (JoypadPort, 4, 1);
-				SetBit (JoypadPort, 0, 1);
-			}
-			
-			if (Keyboard [SDL_SCANCODE_B]) {
-				SetBit (JoypadPort, 4, 1);
-				SetBit (JoypadPort, 1, 1);
-			}
-			
-			if (Keyboard [SDL_SCANCODE_SPACE]) { // SELECT
-				SetBit (JoypadPort, 4, 1);
-				SetBit (JoypadPort, 2, 1);
-			}
-			
-			if (Keyboard [SDL_SCANCODE_RETURN]) { // START
-				SetBit (JoypadPort, 4, 1);
-				SetBit (JoypadPort, 3, 1);
-			}
-			
-			IOMap [0x00] = JoypadPort;
 			
 			if (cpu->Debugging) {
 				if (Keyboard [SDL_SCANCODE_F3] || Keyboard [SDL_SCANCODE_F4]) {
@@ -238,20 +195,58 @@ void CPULoop (CPU* cpu, MMU* mmu, PPU* ppu, uint8_t Boot) {
 			}
 		}
 		
+		// Input - GB
+		if (GetBit (IOMap [0x00], 4) == 0) { // Direction Pad
+			IOMap [0x00] |= 0xF; // 1 - Not Pressed
+			
+			if (Keyboard [SDL_SCANCODE_RIGHT])
+				SetBit (IOMap [0x00], 0, 0);
+
+			if (Keyboard [SDL_SCANCODE_LEFT])
+				SetBit (IOMap [0x00], 1, 0);
+
+			if (Keyboard [SDL_SCANCODE_UP])
+				SetBit (IOMap [0x00], 2, 0);
+
+			if (Keyboard [SDL_SCANCODE_DOWN])
+				SetBit (IOMap [0x00], 3, 0);
+			
+			if ((IOMap [0x00] & 0xF) != 0xF) // Something was pressed
+				cpu->Interrupt (4);
+		}
+			
+		if (GetBit (IOMap [0x00], 5) == 0) { // Buttons
+			IOMap [0x00] |= 0b00001111; // 1 - Not Pressed
+			if (Keyboard [SDL_SCANCODE_A])
+				SetBit (IOMap [0x00], 0, 0);
+			
+			if (Keyboard [SDL_SCANCODE_B])
+				SetBit (IOMap [0x00], 1, 0);
+			
+			if (Keyboard [SDL_SCANCODE_SPACE]) // SELECT
+				SetBit (IOMap [0x00], 2, 0);
+			
+			if (Keyboard [SDL_SCANCODE_RETURN]) // START
+				SetBit (IOMap [0x00], 3, 0);
+			
+			if ((IOMap [0x00] & 0xF) != 0xF) // Something was pressed
+				cpu->Interrupt (4);
+		}
+		
 		// IOMap 0x40 - LCDC
 		// IOMap 0x41 - LCD STAT
 		
 		// Rendering
 		if (GetBit (IOMap [0x40], 7)) { // LCD Operation
 			uint32_t CurrentLineClock = cpu->ClockCount - LastLineDraw;
-			uint32_t PixelTransferDuration = 168 + (SpriteCount * (291 - 168)) / 10; // 10 Sprites should cause maximum duration = 291 Clocks
 				
 			if (ppu->CurrentY < 144) {
 				if (CurrentLineClock <= 80) { // OAM Period
-					if (CurrentPPUMode == 1) {
+					if (CurrentPPUMode == 0 || CurrentPPUMode == 1) { // Came from VBlank or HBlank
 						CurrentPPUMode = 2;
-						SpriteCount = ppu->OAMSearch (mmu->Memory, IOMap);
-						
+						ppu->OAMSearch (mmu->Memory, IOMap);
+						PixelTransferDuration = 168 + (ppu->SpriteCount * (291 - 168)) / 10; // 10 Sprites should cause maximum duration = 291 Clocks
+
 						SetBit (IOMap [0x41], 0, 0); // Set them now so that the CPU can service the INT correctly
 						SetBit (IOMap [0x41], 1, 1);
 						
@@ -282,6 +277,8 @@ void CPULoop (CPU* cpu, MMU* mmu, PPU* ppu, uint8_t Boot) {
 					
 					SetBit (IOMap [0x41], 0, 1);
 					SetBit (IOMap [0x41], 1, 0);
+					
+					cpu->Interrupt (0);
 					
 					if (GetBit (IOMap [0x41], 4))
 						cpu->Interrupt (1);

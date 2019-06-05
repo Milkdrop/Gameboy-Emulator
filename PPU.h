@@ -9,9 +9,10 @@
 class PPU {
 public:
 	PPU (const char* Title, const uint16_t _PixelSize);
-	uint8_t OAMSearch (uint8_t* Memory, uint8_t* IOMap);
+	void OAMSearch (uint8_t* Memory, uint8_t* IOMap);
 	void Update (uint8_t* Memory, uint8_t* IOMap);
 	uint8_t CurrentY = 0;
+	uint8_t SpriteCount = 0;
 private:
 	uint16_t PixelSize;
 	uint16_t Width = 160; // 160

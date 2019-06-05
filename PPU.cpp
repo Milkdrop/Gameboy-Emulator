@@ -20,24 +20,24 @@ PPU::PPU (const char* Title, const uint16_t _PixelSize) {
 
 inline void PPU::SetPixel (uint32_t CoordX, uint32_t CoordY, uint32_t Color) {
 	uint32_t PixelNo = CoordY * Width + CoordX;
-	
 	Pixels [PixelNo] = Color;
 }
 
-uint8_t PPU::OAMSearch (uint8_t* Memory, uint8_t* IOMap) {
+void PPU::OAMSearch (uint8_t* Memory, uint8_t* IOMap) {
 	uint8_t SpriteSize = 8 + (GetBit (IOMap [0x40], 2) << 3); // 8x8 or 8x16
 	uint8_t QueueNumber = 0;
 	
 	for (int i = 0xFE00; i <= 0xFE9F; i += 4) {
 		if (CurrentY + 16 >= Memory[i] && CurrentY + 16 <= Memory[i] + SpriteSize) { // Y Position
-			memcpy (OAMQueue + QueueNumber, Memory + i, 4);
+			//printf ("%d: Load sprite at %d\n", QueueNumber, CurrentY);
+			memcpy (OAMQueue + (QueueNumber << 2), Memory + i, 4);
 			QueueNumber++;
 			if (QueueNumber == 10) // Max 10 sprites per line
 				break;
 		}
 	}
 	
-	return QueueNumber;
+	SpriteCount = QueueNumber;
 }
 
 void PPU::Update (uint8_t* Memory, uint8_t* IOMap) {
@@ -54,6 +54,7 @@ void PPU::Update (uint8_t* Memory, uint8_t* IOMap) {
 	*/
 	
 	if (GetBit (IOMap [0x40], 0)) { // BG Enabled
+		// Set BG Palette
 		BGPalette [0] = GetBit (IOMap [0x47], 0) | (GetBit (IOMap [0x47], 1) << 1);
 		BGPalette [1] = GetBit (IOMap [0x47], 2) | (GetBit (IOMap [0x47], 3) << 1);
 		BGPalette [2] = GetBit (IOMap [0x47], 4) | (GetBit (IOMap [0x47], 5) << 1);
@@ -61,6 +62,7 @@ void PPU::Update (uint8_t* Memory, uint8_t* IOMap) {
 	}
 	
 	if (GetBit (IOMap [0x40], 1)) { // Sprites Enabled
+		// Set Sprite Palettes
 		SpritePalette0 [1] = GetBit (IOMap [0x48], 2) | (GetBit (IOMap [0x48], 3) << 1);
 		SpritePalette0 [2] = GetBit (IOMap [0x48], 4) | (GetBit (IOMap [0x48], 5) << 1);
 		SpritePalette0 [3] = GetBit (IOMap [0x48], 6) | (GetBit (IOMap [0x48], 7) << 1);
@@ -80,8 +82,8 @@ void PPU::Update (uint8_t* Memory, uint8_t* IOMap) {
 			uint8_t BGX = CurrentX + ScrollX;
 			uint8_t BGY = CurrentY + ScrollY;
 			
+			uint8_t BGColor = 0;
 			if (GetBit (IOMap [0x40], 0)) { // BG Display
-				// Set BG Palette
 				uint8_t BGTile = Memory [BGTable + ((BGY >> 3) << 5) + (BGX >> 3)];
 				uint8_t PixelX = BGX & 0x7;
 				uint8_t PixelY = BGY & 0x7;
@@ -97,12 +99,56 @@ void PPU::Update (uint8_t* Memory, uint8_t* IOMap) {
 				// Second Byte: MSB ~~~
 				
 				uint8_t Color = (GetBit (BGTileData [PixelY * 2 + 1], 7 - PixelX) << 1) | GetBit (BGTileData [PixelY * 2], 7 - PixelX);
+				BGColor = Color;
 				ColorToDraw = Colors [BGPalette [Color]];
 			}
 			
 			if (GetBit (IOMap [0x40], 1)) { // Sprite Display
-				// Set Sprite Palettes
-				//printf ("Display Sprites\n");
+				uint16_t MinX = 256; // Just greater than max (SpriteX)
+				
+				for (int i = 0; i < (SpriteCount << 2); i += 4) {
+					uint8_t CoordY = OAMQueue [i];
+					uint8_t CoordX = OAMQueue [i + 1];
+						
+					if (CurrentX + 8 >= CoordX && CurrentX < CoordX) { // Sprite in Current X
+						uint8_t PixelX = 7 - ((CurrentX + 8) - CoordX); // True X coordinate is 7 - X, due to the order of Bits
+						uint8_t PixelY = (CurrentY + 16) - CoordY;
+							
+						uint8_t SpriteTile = OAMQueue [i + 2];
+						if (GetBit (IOMap [0x40], 2)) // Ignore bit 0 if 8x16
+							SetBit (SpriteTile, 0, 0);
+							
+						uint8_t* SpriteTileData = Memory + (0x8000 + (SpriteTile << 4));
+						uint8_t Color = 0;
+						
+						if (GetBit (OAMQueue [i + 3], 5)) // Flip X
+							PixelX = 7 - PixelX;
+						
+						// Y flipping is done differently for 8x16
+						if (GetBit (IOMap [0x40], 2)) { // 0 - 8x8, 1 - 8x16
+							if (GetBit (OAMQueue [i + 3], 6)) // Flip Y
+								PixelY = 15 - PixelY;
+						} else {
+							if (GetBit (OAMQueue [i + 3], 6)) // Flip Y
+								PixelY = 7 - PixelY;
+						}
+							
+						Color = (GetBit (SpriteTileData [PixelY * 2 + 1], PixelX) << 1) | GetBit (SpriteTileData [PixelY * 2], PixelX);
+						
+						if (Color != 0) { // Not Transparent
+							if (GetBit (OAMQueue [i + 3], 4)) // Choose sprite palette
+								Color = SpritePalette1 [Color];
+							else
+								Color = SpritePalette0 [Color];
+								
+							if (GetBit (OAMQueue [i + 3], 7)) { // Above only if BG Color is 0
+								if (BGColor == 0)
+									ColorToDraw = Colors [Color];
+							} else
+								ColorToDraw = Colors [Color]; // Above BG
+						}
+					}
+				}
 			}
 			
 			SetPixel (CurrentX, CurrentY, ColorToDraw);
