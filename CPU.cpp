@@ -22,10 +22,34 @@ const uint8_t ClocksPerInstruction[] = {
 
 CPU::CPU (MMU* _mmu) {
 	mmu = _mmu;
-	//reg_AF = 0x1180;
-	//reg_DE = 0xFF56;
-	//reg_HL = 0x000D;
-	//SP = 0xFFFE;
+	
+	// Simulate Boot ROM
+	reg_AF = 0x1180;
+	reg_DE = 0xFF56;
+	reg_HL = 0x000D;
+	SP = 0xFFFE; // Setup Stack
+	PC = 0x100;
+	
+	// Setup I/O
+	mmu->SetByteAt (0xFF10, 0x80);
+	mmu->SetByteAt (0xFF11, 0xBF);
+	mmu->SetByteAt (0xFF12, 0xF3);
+	mmu->SetByteAt (0xFF14, 0xBF);
+	mmu->SetByteAt (0xFF16, 0x3F);
+	mmu->SetByteAt (0xFF19, 0xBF);
+	mmu->SetByteAt (0xFF1A, 0x7F);
+	mmu->SetByteAt (0xFF1B, 0xFF);
+	mmu->SetByteAt (0xFF1C, 0x9F);
+	mmu->SetByteAt (0xFF1E, 0xBF);
+	mmu->SetByteAt (0xFF20, 0xFF);
+	mmu->SetByteAt (0xFF23, 0xBF);
+	mmu->SetByteAt (0xFF24, 0x77);
+	mmu->SetByteAt (0xFF25, 0xF3);
+	mmu->SetByteAt (0xFF26, 0xF1);
+	mmu->SetByteAt (0xFF40, 0x91);
+	mmu->SetByteAt (0xFF47, 0xFC);
+	mmu->SetByteAt (0xFF48, 0xFF);
+	mmu->SetByteAt (0xFF49, 0xFF);
 }
 
 void CPU::Debug () {
@@ -144,6 +168,8 @@ uint8_t Shown = 0;
 void CPU::Execute (uint8_t Instruction) {
 	ClockCount += ClocksPerInstruction [Instruction];
 	
+	//printf ("0x%04x: Executing 0x%02x\n", PC - 1, Instruction);
+
 	flag_Z = (*reg_F >> 7) & 1;
 	flag_N = (*reg_F >> 6) & 1;
 	flag_H = (*reg_F >> 5) & 1;

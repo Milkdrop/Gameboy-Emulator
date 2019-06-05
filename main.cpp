@@ -7,29 +7,18 @@
 #include "CPU.h"
 #include "utils.h"
 
-const char* ROMTypes[] = {
-	"ROM Only", "ROM+MBC1", "ROM+MBC1+RAM", "ROM+MBC1+RAM+BATT",
-	"Unknown", "ROM+MBC2", "ROM+MBC2+BATT", "Unknown",
-	"ROM+RAM", "ROM+RAM+BATTERY", "Unknown", "ROM+MMM01",
-	"ROM+MMM01+SRAM", "ROM+MMM01+SRAM+BATT", "Unknown", "Unknown",
-	"Unknown", "Unknown", "ROM+MBC3+RAM", "ROM+MBC3+RAM+BATT",
-	"Unknown", "Unknown", "Unknown", "Unknown", 
-	"Unknown", "ROM+MBC5", "ROM+MBC5+RAM", "ROM+MBC5+RAM+BATT",
-	"ROM+MBC5+RUMBLE", "ROM+MBC5+RUMBLE+SRAM", "ROM+MBC5+RUMBLE+SRAM+BATT", "Pocket Camera"
-};
-
-uint8_t ROM [8 * 1024 * 1024]; // 8 MB Max ROM Size
-uint8_t BootROM [256]; // Boot ROM Size
-
 void OpenFileError (const char* Filename);
-void LoadROM (const char* Filename, const uint8_t Type);
+void LoadROM (MMU* mmu, const char* Filename);
 void AnalyzeROM (MMU* mmu);
-void CPULoop (CPU* cpu, MMU* mmu, PPU* ppu, uint8_t Boot);
-	
+void CPULoop (CPU* cpu, MMU* mmu, PPU* ppu);
+
+uint8_t ROMwBattery [] = {0x03, 0x06, 0x09, 0x0D, 0x0F, 0x10, 0x1B, 0x1E, 0x20, 0xFF};
+uint8_t ROMwRAM [] = {0x02, 0x03, 0x06, 0x08, 0x09, 0x0C, 0x0D, 0x10, 0x12, 0x13, 0x1A, 0x1B, 0x1D, 0x1E, 0x20, 0x22, 0xFF};
+
 int main (int argc, char** argv) {
-	if (argc < 3) {
-		printf ("Please specify Boot ROM + Game ROM Filename:\n");
-		printf ("\t- %s Boot.bin Game.gb\n", argv[0]);
+	if (argc < 2) {
+		printf ("Please specify Game ROM Filename:\n");
+		printf ("\t- %s Game.gb\n", argv[0]);
 		return 1;
 	}
 	
@@ -46,17 +35,11 @@ int main (int argc, char** argv) {
 	CPU* cpu = new CPU (mmu);
 	PPU* ppu = new PPU ("Gameboy", 2);
 	
-	LoadROM (argv[1], 1);
-	LoadROM (argv[2], 0);
-	mmu->SetBytesAt (0x0000, ROM, 0x10000);
-	mmu->SetBytesAt (0x0000, BootROM, 0x100);
+	LoadROM (mmu, argv[1]);
 	AnalyzeROM (mmu);
 	
 	// Loop
-	CPULoop (cpu, mmu, ppu, 1); // Boot
-	mmu->SetBytesAt (0x0000, ROM, 0x100); // Load 0x100 ROM Area, for INTs etc.
-	
-	CPULoop (cpu, mmu, ppu, 0); // Normal Loop
+	CPULoop (cpu, mmu, ppu);
 	
 	// Cleanup
 	SDL_Quit ();
@@ -68,7 +51,7 @@ void OpenFileError (const char* Filename) {
 	exit(1);
 }
 
-void LoadROM (const char* Filename, const uint8_t Type) {
+void LoadROM (MMU* mmu, const char* Filename) {
 	printf ("Opening ROM %s...", Filename);
 	
 	FILE* ROMfd = fopen (Filename, "rb");
@@ -84,12 +67,8 @@ void LoadROM (const char* Filename, const uint8_t Type) {
 	if (fread(Buffer, 1, ROMSize, ROMfd) != ROMSize)
 		OpenFileError (Filename);
 	
-	switch (Type) {
-		case 0: memcpy (ROM, Buffer, ROMSize); break; // Boot ROM
-		case 1: memcpy (BootROM, Buffer, ROMSize); break; // Normal ROM
-		default: break;
-	}
-	
+	memcpy (mmu->ROM, Buffer, ROMSize);
+	mmu->SetBytesAt (0x0000, Buffer, 0x10000);
 	free (Buffer);
 	fclose (ROMfd);
 	printf ("OK\n");
@@ -111,16 +90,68 @@ void AnalyzeROM (MMU* mmu) {
 	else
 		printf ("Unknown ROM\n");
 	
-	printf ("Rom Type: ");
-	uint8_t ROMType = mmu->GetByteAt (0x147);
-	if (ROMType == 0xFE)
-		printf ("Hudson HuC-3\n");
-	else if (ROMType == 0xFD)
-		printf ("Bandai TAMA5\n");
-	else if (ROMType < 0x20) {
-		printf ("%s\n", ROMTypes [ROMType]);
-	} else
-		printf ("Unknown\n");
+	uint8_t ROMType = 0; // Actual ROM Type
+	uint8_t ROMBattery = 0;
+	uint8_t ROMRAM = 0;
+	uint8_t CartridgeROMType = mmu->GetByteAt (0x147);
+	
+	if (CartridgeROMType == 0x00)
+		ROMType = 0; // ROM Only
+	else if (CartridgeROMType < 0x04)
+		ROMType = 1; // MBC1
+	else if (CartridgeROMType < 0x07)
+		ROMType = 2; // MBC2
+	else if (CartridgeROMType < 0x0A)
+		ROMType = 0; // ROM + RAM
+	else if (CartridgeROMType < 0x0E)
+		ROMType = 4; // MMM01, there's no MBC4
+	else if (CartridgeROMType < 0x18)
+		ROMType = 3; // MBC3
+	else if (CartridgeROMType < 0x1F)
+		ROMType = 5; // MBC5
+	else if (CartridgeROMType < 0x21)
+		ROMType = 6; // MBC6
+	else if (CartridgeROMType < 0x23)
+		ROMType = 7; // MBC7
+	
+	uint8_t ROMwBatteryCount = sizeof (ROMwBattery);
+	uint8_t ROMwRAMCount = sizeof (ROMwRAM);
+	
+	for (int i = 0; i < ROMwBatteryCount; i++)
+		if (CartridgeROMType == ROMwBattery [i])
+			ROMBattery = 1;
+	
+	for (int i = 0; i < ROMwRAMCount; i++)
+		if (CartridgeROMType == ROMwRAM [i])
+			ROMRAM = 1;
+	
+	printf ("ROM Type: ");
+	switch (ROMType) {
+		case 0: printf ("ROM Only\n"); break;
+		case 1: printf ("MBC1\n"); break;
+		case 2: printf ("MBC2\n"); break;
+		case 3: printf ("MBC3\n"); break;
+		case 4: printf ("MMM01\n"); break;
+		case 5: printf ("MBC5\n"); break;
+		case 6: printf ("MBC6\n"); break;
+		case 7: printf ("MBC7\n"); break;
+	}
+	
+	printf ("ROM Battery: ");
+	if (ROMBattery)
+		printf ("YES\n");
+	else
+		printf ("NO\n");
+	
+	printf ("ROM w/ RAM: ");
+	if (ROMRAM)
+		printf ("YES\n");
+	else
+		printf ("NO\n");
+	
+	mmu->ROMType = ROMType;
+	mmu->ROMBattery = ROMBattery;
+	mmu->ROMRAM = ROMRAM;
 }
 
 /* IO TODO
@@ -130,13 +161,12 @@ FF10 -> FF26 // Sound
 */
 
 // Clock Speed: 4.194304 MHz
-void CPULoop (CPU* cpu, MMU* mmu, PPU* ppu, uint8_t Boot) {
+void CPULoop (CPU* cpu, MMU* mmu, PPU* ppu) {
 	// Main Loop Variables
 	SDL_Event ev;
 	const uint8_t *Keyboard = SDL_GetKeyboardState(NULL);
 	uint8_t* IOMap = mmu->IOMap;
 	uint64_t CurrentTime = 0;
-	uint64_t LastDebug = 0;
 	uint64_t LastInput = 0;
 	uint64_t LastTimer = 0;
 	uint64_t LastDiv = 0;
@@ -156,20 +186,13 @@ void CPULoop (CPU* cpu, MMU* mmu, PPU* ppu, uint8_t Boot) {
 		CurrentTime = clock(); // In Microseconds (On *UNIX)
 		
 		if (CurrentTime - LastLoop <= 1000) {
-			if (cpu->ClockCount - LastClock >= ClocksPerMS) { // Throttle
+			if (cpu->ClockCount - LastClock >= ClocksPerMS && !Keyboard [SDL_SCANCODE_SPACE]) { // Throttle - Space for max speed
 				// TODO: nanosleep ?
 				continue;
 			}
 		} else {
 			LastLoop = CurrentTime;
 			LastClock = cpu->ClockCount;
-		}
-		
-		// Debug / Info
-		if (CurrentTime - LastDebug >= 5000000 || LastDebug > CurrentTime) { // 30 Hz
-			LastDebug = CurrentTime;
-			//printf ("Speed: @%f MHz\n", (float) cpu->ClockCount / 5000000);
-			cpu->ClockCount = 0;
 		}
 		
 		// Input - SDL
@@ -224,7 +247,7 @@ void CPULoop (CPU* cpu, MMU* mmu, PPU* ppu, uint8_t Boot) {
 			if (Keyboard [SDL_SCANCODE_B])
 				SetBit (IOMap [0x00], 1, 0);
 			
-			if (Keyboard [SDL_SCANCODE_SPACE]) // SELECT
+			if (Keyboard [SDL_SCANCODE_LSHIFT]) // SELECT
 				SetBit (IOMap [0x00], 2, 0);
 			
 			if (Keyboard [SDL_SCANCODE_RETURN]) // START
@@ -326,9 +349,6 @@ void CPULoop (CPU* cpu, MMU* mmu, PPU* ppu, uint8_t Boot) {
 			LastDiv = CurrentTime;
 			IOMap [0x04]++;
 		}
-		
-		if (Boot && cpu->PC == 0x100) // Done Booting
-			return;
 		
 		if (!cpu->Debugging) {
 			uint8_t OldDMA = IOMap [0x46];

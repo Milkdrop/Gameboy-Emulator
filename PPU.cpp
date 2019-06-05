@@ -42,15 +42,19 @@ void PPU::OAMSearch (uint8_t* Memory, uint8_t* IOMap) {
 
 void PPU::Update (uint8_t* Memory, uint8_t* IOMap) {
 	uint16_t BGTable = 0x9800;
+	uint16_t WindowTable = 0x9800;
 	if (GetBit (IOMap [0x40], 3))
 		BGTable = 0x9C00;
 	
+	if (GetBit (IOMap [0x40], 6))
+		WindowTable = 0x9C00;
+		
 	uint8_t BGAddressingMode = GetBit (IOMap [0x40], 4); // 0 - Signed (0x8000), 1 - Unsigned (0x9000)
 	
 	/* LCDC TODO:
 		0xFF40: bits 0, 5, 6
 		0xFF4A, 0xFF4B
-		
+		Window Drawing + X coordinate sprite priority
 	*/
 	
 	if (GetBit (IOMap [0x40], 0)) { // BG Enabled
@@ -71,19 +75,16 @@ void PPU::Update (uint8_t* Memory, uint8_t* IOMap) {
 		SpritePalette1 [2] = GetBit (IOMap [0x49], 4) | (GetBit (IOMap [0x49], 5) << 1);
 		SpritePalette1 [3] = GetBit (IOMap [0x49], 6) | (GetBit (IOMap [0x49], 7) << 1);
 	}
-	
-	// Set BG Scrolling
-	uint8_t ScrollY = IOMap[0x42];
-	uint8_t ScrollX = IOMap[0x43];
 
 	if (CurrentY < Height) {
 		for (int CurrentX = 0; CurrentX < Width; CurrentX++) {
 			uint32_t ColorToDraw = Colors [0];
-			uint8_t BGX = CurrentX + ScrollX;
-			uint8_t BGY = CurrentY + ScrollY;
 			
 			uint8_t BGColor = 0;
 			if (GetBit (IOMap [0x40], 0)) { // BG Display
+				uint8_t BGX = CurrentX + IOMap[0x43];
+				uint8_t BGY = CurrentY + IOMap[0x42];
+				
 				uint8_t BGTile = Memory [BGTable + ((BGY >> 3) << 5) + (BGX >> 3)];
 				uint8_t PixelX = BGX & 0x7;
 				uint8_t PixelY = BGY & 0x7;
@@ -101,6 +102,32 @@ void PPU::Update (uint8_t* Memory, uint8_t* IOMap) {
 				uint8_t Color = (GetBit (BGTileData [PixelY * 2 + 1], 7 - PixelX) << 1) | GetBit (BGTileData [PixelY * 2], 7 - PixelX);
 				BGColor = Color;
 				ColorToDraw = Colors [BGPalette [Color]];
+			}
+			
+			if (GetBit (IOMap [0x40], 5)) { // Window Display
+				uint8_t CoordX = IOMap[0x4B];
+				uint8_t CoordY = IOMap[0x4A];
+				
+				if (CoordX - 7 <= CurrentX && CoordY <= CurrentY) {
+					uint8_t WindowX = CurrentX + 7 - CoordX;
+					uint8_t WindowY = CurrentY - CoordY;
+					
+					uint8_t WindowTile = Memory [WindowTable + ((WindowY >> 3) << 5) + (WindowX >> 3)];
+					uint8_t PixelX = WindowX & 0x7;
+					uint8_t PixelY = WindowY & 0x7;
+					
+					uint8_t* WindowTileData;
+					if (BGAddressingMode)
+						WindowTileData = Memory + (0x8000 + (WindowTile << 4));
+					else
+						WindowTileData = Memory + (0x9000 + (int8_t) WindowTile * 16);
+
+					// First Byte: LSB of Color for Pixel (PixelX, PixelY)
+					// Second Byte: MSB ~~~
+
+					uint8_t Color = (GetBit (WindowTileData [PixelY * 2 + 1], 7 - PixelX) << 1) | GetBit (WindowTileData [PixelY * 2], 7 - PixelX);
+					ColorToDraw = Colors [BGPalette [Color]]; // Shared with BG
+				}
 			}
 			
 			if (GetBit (IOMap [0x40], 1)) { // Sprite Display

@@ -14,7 +14,6 @@ class CPU {
 	
 		uint32_t ClockCount = 0;
 		uint8_t Debugging = 0;
-		uint16_t PC = 0;
 	private:
 		MMU* mmu;
 		void Execute (uint8_t Instruction);
@@ -34,6 +33,7 @@ class CPU {
 		uint8_t* reg_L = ((uint8_t*) &reg_HL);
 		
 		uint16_t SP = 0;
+		uint16_t PC = 0;
 	
 		// Flags - For Convenience
 		uint8_t flag_Z = 0;
