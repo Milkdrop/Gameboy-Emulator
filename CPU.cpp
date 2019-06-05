@@ -24,9 +24,10 @@ CPU::CPU (MMU* _mmu) {
 	mmu = _mmu;
 	
 	// Simulate Boot ROM
-	reg_AF = 0x1180;
-	reg_DE = 0xFF56;
-	reg_HL = 0x000D;
+	reg_AF = 0x11B0;
+	reg_BC = 0x0013;
+	reg_DE = 0x00D8;
+	reg_HL = 0x014D;
 	SP = 0xFFFE; // Setup Stack
 	PC = 0x100;
 	

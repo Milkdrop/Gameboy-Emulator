@@ -5,10 +5,15 @@ MMU::MMU () {
 }
 
 MMU::~MMU () {
+	printf ("Deleting ROM\n");
 	free (ROM);
+	printf ("OK MMU\n");
 	free (ExternalRAM);
+	printf ("OK MMU\n");
 	free (RTCRegister);
+	printf ("OK MMU\n");
 	free (Memory);
+	printf ("OK MMU fin\n");
 }
 
 uint8_t MMU::GetByteAt (uint16_t Address) {

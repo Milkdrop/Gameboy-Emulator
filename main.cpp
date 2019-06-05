@@ -303,14 +303,14 @@ void CPULoop (CPU* cpu, MMU* mmu, PPU* ppu) {
 						PressControlR = 1;
 						
 						printf ("[INFO] Reseting State...\n");
-						free (mmu);
-						free (cpu);
-						free (ppu);
+						delete mmu;
+						delete cpu;
+						delete ppu;
 
 						mmu = new MMU;
 						cpu = new CPU (mmu);
 						ppu = new PPU ("Gameboy", 2);
-
+			
 						LoadROM (mmu);
 						IOMap = mmu->IOMap;
 						
