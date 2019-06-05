@@ -28,7 +28,7 @@ void PPU::OAMSearch (uint8_t* Memory, uint8_t* IOMap) {
 	uint8_t QueueNumber = 0;
 	
 	for (int i = 0xFE00; i <= 0xFE9F; i += 4) {
-		if (CurrentY + 16 >= Memory[i] && CurrentY + 16 <= Memory[i] + SpriteSize) { // Y Position
+		if (CurrentY + 16 >= Memory[i] && CurrentY + 16 < Memory[i] + SpriteSize) { // Y Position
 			//printf ("%d: Load sprite at %d\n", QueueNumber, CurrentY);
 			memcpy (OAMQueue + (QueueNumber << 2), Memory + i, 4);
 			QueueNumber++;

@@ -149,13 +149,18 @@ void CPU::Execute (uint8_t Instruction) {
 	flag_H = (*reg_F >> 5) & 1;
 	flag_C = (*reg_F >> 4) & 1;
 	
+	if (EnableInterruptsFlag) {
+		InterruptsEnabled = 1;
+		EnableInterruptsFlag = 0;
+	}
+	
 	switch (Instruction) {
 		// Misc / Control
 		case 0x00: break; // NOP
 		case 0x10: Stopped = 1; break; // STOP
 		case 0x76: Halt = 1; break; // HALT
 		case 0xF3: InterruptsEnabled = 0; break; // DI
-		case 0xFB: InterruptsEnabled = 1; break; // EI
+		case 0xFB: EnableInterruptsFlag = 1; break; // EI - Delay of one instruction
 		case 0xCB: u8 = mmu->GetByteAt (PC++); // CB
 			ClockCount += 8;
 			switch (u8) {

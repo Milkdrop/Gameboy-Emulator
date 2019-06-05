@@ -48,7 +48,7 @@ int main (int argc, char** argv) {
 	
 	LoadROM (argv[1], 1);
 	LoadROM (argv[2], 0);
-	mmu->SetBytesAt (0x0000, ROM, 0xC000);
+	mmu->SetBytesAt (0x0000, ROM, 0x10000);
 	mmu->SetBytesAt (0x0000, BootROM, 0x100);
 	AnalyzeROM (mmu);
 	
@@ -139,6 +139,7 @@ void CPULoop (CPU* cpu, MMU* mmu, PPU* ppu, uint8_t Boot) {
 	uint64_t LastDebug = 0;
 	uint64_t LastInput = 0;
 	uint64_t LastTimer = 0;
+	uint64_t LastDiv = 0;
 	uint8_t PressDebug = 0;
 	uint8_t Quit = 0;
 	
@@ -318,6 +319,12 @@ void CPULoop (CPU* cpu, MMU* mmu, PPU* ppu, uint8_t Boot) {
 					cpu->Interrupt (2);
 				}
 			}
+		}
+		
+		// DIV Register
+		if (CurrentTime - LastDiv >= 1000000 / 16384 || LastDiv > CurrentTime) {
+			LastDiv = CurrentTime;
+			IOMap [0x04]++;
 		}
 		
 		if (Boot && cpu->PC == 0x100) // Done Booting

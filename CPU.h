@@ -50,6 +50,7 @@ class CPU {
 		// Status
 		uint8_t Halt = 0;
 		uint8_t Stopped = 0;
+		uint8_t EnableInterruptsFlag = 0;
 		uint8_t InterruptsEnabled = 0;
 	
 		// Functions - Stack
