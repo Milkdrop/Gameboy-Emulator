@@ -1,5 +1,7 @@
 #include "CPU.h"
 
+using namespace Utils;
+
 const uint8_t ClocksPerInstruction[] = {
 //  0   1   2   3   4   5   6   7   8   9   A   B   C   D   E   F
 	4,  12, 8,  8,  4,  4,  8,  4,  20, 8,  8,  8,  4,  4,  8,  4,  // 0
@@ -32,6 +34,7 @@ CPU::CPU (MMU* _mmu) {
 	PC = 0x0100;
 	
 	// Setup I/O
+	mmu->SetByteAt (0xFF04, 0xAB);
 	mmu->SetByteAt (0xFF10, 0x80);
 	mmu->SetByteAt (0xFF11, 0xBF);
 	mmu->SetByteAt (0xFF12, 0xF3);
@@ -73,20 +76,24 @@ void CPU::Interrupt (uint8_t ID) {
 		0x0060 Joypad Input Handler
 	*/
 	
+	uint8_t reg_IF = 0;
+	SetBit (reg_IF, ID, 1);
+	
 	if (InterruptsEnabled) {
 		uint8_t reg_IE = mmu->GetByteAt (0xFFFF);
-		uint8_t reg_IF = 0;
-		switch (ID) {
-			case 0: if (reg_IE & (1 << 0)) { InterruptsEnabled = 0; reg_IF |= (1 << 0); StackPush (PC); PC = 0x0040; } break; // VBlank
-			case 1: if (reg_IE & (1 << 1)) { InterruptsEnabled = 0; reg_IF |= (1 << 1); StackPush (PC); PC = 0x0048; } break; // LCDC
-			case 2: if (reg_IE & (1 << 2)) { InterruptsEnabled = 0; reg_IF |= (1 << 2); StackPush (PC); PC = 0x0050; } break; // Timer Overflow
-			case 3: if (reg_IE & (1 << 3)) { InterruptsEnabled = 0; reg_IF |= (1 << 3); StackPush (PC); PC = 0x0058; } break; // Serial Transfer Completion
-			case 4: if (reg_IE & (1 << 4)) { InterruptsEnabled = 0; reg_IF |= (1 << 4); StackPush (PC); PC = 0x0060; } break; // P10-P13 High to Low
-			default: break;
-		}
 		
-		mmu->SetByteAt (0xFF0F, reg_IF);
+		if (GetBit (reg_IE, ID)) { // Interrupt Enabled in IE
+			ClockCount += 20;
+			InterruptsEnabled = 0;
+			if (Halt)
+				ClockCount += 4;
+			Halt = 0;
+			StackPush (PC);
+			PC = 0x0040 + (ID << 3); // Jump to interrupt handler
+		}
 	}
+	
+	mmu->SetByteAt (0xFF0F, reg_IF);
 }
 
 inline uint16_t CPU::StackPop () {
@@ -155,6 +162,15 @@ inline void CPU::SetFlagsSub (uint8_t OpA, uint8_t OpB, uint8_t Carry, uint8_t C
 }
 
 void CPU::Clock () {
+	if (Stopped)
+		return;
+	
+	if (Halt) {
+		ClockCount += ClocksPerInstruction [0x00]; // Execute NOP
+		InstructionCount++;
+		return;
+	}
+	
 	uint8_t Instruction = mmu->GetByteAt (PC++);
 	Execute (Instruction);
 }
@@ -178,8 +194,8 @@ void CPU::Execute (uint8_t Instruction) {
 	switch (Instruction) {
 		// Misc / Control
 		case 0x00: break; // NOP
-		case 0x10: Stopped = 1; break; // STOP
-		case 0x76: Halt = 1; break; // HALT
+		case 0x10: printf ("[INFO] CPU Stopped\n"); Stopped = 1; break; // STOP
+		case 0x76: if (InterruptsEnabled) Halt = 1; break; // HALT
 		case 0xF3: InterruptsEnabled = 0; break; // DI
 		case 0xFB: EnableInterruptsFlag = 1; break; // EI - Delay of one instruction
 		case 0xCB: u8 = mmu->GetByteAt (PC++); // CB

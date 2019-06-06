@@ -60,9 +60,7 @@ void PPU::Update (uint8_t* Memory, uint8_t* IOMap) {
 	uint8_t BGAddressingMode = GetBit (IOMap [0x40], 4); // 0 - Signed (0x8000), 1 - Unsigned (0x9000)
 	
 	/* LCDC TODO:
-		0xFF40: bits 0, 5, 6
-		0xFF4A, 0xFF4B
-		Window Drawing + X coordinate sprite priority
+		0xFF40: bits 5
 	*/
 	
 	if (GetBit (IOMap [0x40], 0)) { // BG Enabled
@@ -86,10 +84,10 @@ void PPU::Update (uint8_t* Memory, uint8_t* IOMap) {
 
 	if (CurrentY < Height) {
 		for (int CurrentX = 0; CurrentX < Width; CurrentX++) {
-			uint32_t ColorToDraw = Colors [0];
+			uint32_t ColorToDraw = Colors [BGPalette [0]];
 			
 			uint8_t BGColor = 0;
-			if (GetBit (IOMap [0x40], 0)) { // BG Display
+			if (GetBit (IOMap [0x40], 0)) { // BG Display + Window Display (DMG Only)
 				uint8_t BGX = CurrentX + IOMap[0x43];
 				uint8_t BGY = CurrentY + IOMap[0x42];
 				
@@ -112,7 +110,7 @@ void PPU::Update (uint8_t* Memory, uint8_t* IOMap) {
 				ColorToDraw = Colors [BGPalette [Color]];
 			}
 			
-			if (GetBit (IOMap [0x40], 5)) { // Window Display
+			if (GetBit (IOMap [0x40], 0) && GetBit (IOMap [0x40], 5)) { // Window Display
 				uint8_t CoordX = IOMap[0x4B];
 				uint8_t CoordY = IOMap[0x4A];
 				
@@ -175,12 +173,15 @@ void PPU::Update (uint8_t* Memory, uint8_t* IOMap) {
 								Color = SpritePalette1 [Color];
 							else
 								Color = SpritePalette0 [Color];
-								
-							if (GetBit (OAMQueue [i + 3], 7)) { // Above only if BG Color is 0
-								if (BGColor == 0)
-									ColorToDraw = Colors [Color];
-							} else
-								ColorToDraw = Colors [Color]; // Above BG
+							
+							if (CoordX < MinX) { // Only draw over the sprite if our X coord is <
+								MinX = CoordX;
+								if (GetBit (OAMQueue [i + 3], 7)) { // Above only if BG Color is 0
+									if (BGColor == 0)
+										ColorToDraw = Colors [Color];
+								} else
+									ColorToDraw = Colors [Color]; // Above BG
+							}
 						}
 					}
 				}

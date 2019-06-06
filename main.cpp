@@ -239,6 +239,7 @@ void CPULoop (CPU* cpu, MMU* mmu, PPU* ppu) {
 	
 	// Time Events - Clock independent
 	auto StartTime = std::chrono::high_resolution_clock::now ();
+	uint64_t ClockCompensation = 0;
 	uint64_t LastInputTime = 0;
 	uint64_t LastLoopTime = 0;
 	uint64_t LastDebugTime = 0; // To show info
@@ -251,7 +252,6 @@ void CPULoop (CPU* cpu, MMU* mmu, PPU* ppu) {
 	
 	// Timing
 	uint32_t LastLineDrawClock = 0;
-	uint32_t CurrentPPUMode = 1;
 	uint32_t PixelTransferDuration = 0;
 	uint32_t ClocksPerSec = 4194304;
 	uint32_t ClocksPerMS = ClocksPerSec / 1000;
@@ -263,25 +263,27 @@ void CPULoop (CPU* cpu, MMU* mmu, PPU* ppu) {
 
 	// Main Loop
 	while (!Quit) {
-		uint64_t CurrentTime = GetCurrentTime (StartTime);
+		uint64_t CurrentTime = GetCurrentTime (&StartTime);
 		
 		// Throttle
 		if (CurrentTime - LastLoopTime <= 1000) { // Check if Host CPU is faster
 			uint8_t Throttle = 0;
 			
-			if (cpu->ClockCount - LastMSClock >= ClocksPerMS && !Keyboard [SDL_SCANCODE_SPACE]) // Press space to disable throttling
+			if (cpu->ClockCount - LastMSClock >= ClocksPerMS + ClockCompensation && !Keyboard [SDL_SCANCODE_SPACE]) // Press space to disable throttling
 				Throttle = 1;
-			else if (cpu->ClockCount - LastMSClock >= (ClocksPerMS >> 2) && Keyboard [SDL_SCANCODE_BACKSPACE]) // x4 slow motion
+			else if (cpu->ClockCount - LastMSClock >= ((ClocksPerMS + ClockCompensation) >> 2) && Keyboard [SDL_SCANCODE_BACKSPACE]) // x4 slow motion
 				Throttle = 1;
 			
 			if (Throttle) {
-				printf ("Started Sleeping at %lld\n", CurrentTime);
-				NanoSleep (1000 - (CurrentTime - LastLoopTime));
-				printf ("Woke up at %lld\n", CurrentTime);
-				LastLoopTime = GetCurrentTime (StartTime);
+				uint32_t usToSleep = 1000 - (CurrentTime - LastLoopTime);
+				MicroSleep (usToSleep);
+				LastLoopTime = GetCurrentTime (&StartTime);
 				LastMSClock = cpu->ClockCount;
+				
+				uint32_t MicroSleepOvershoot = (LastLoopTime - CurrentTime) - usToSleep;
+				ClockCompensation = ((float) ClocksPerSec / 1000000) * MicroSleepOvershoot;
 			}
-		} else {
+		} else { // Passed one milisecond without throttling
 			LastLoopTime = CurrentTime;
 			LastMSClock = cpu->ClockCount;
 		}
@@ -344,15 +346,107 @@ void CPULoop (CPU* cpu, MMU* mmu, PPU* ppu) {
 						LastDebugTime = 0;
 						
 						LastLineDrawClock = 0;
-						CurrentPPUMode = 1;
+						mmu->CurrentPPUMode = 1;
 						
 						LastMSClock = 0;
 						LastTimerClock = 0;
 						LastDivClock = 0;
+						
 						LastDebugClock = 0;
+						LastDebugInstructionCount = 0;
 					}
 				} else
 					PressControlR = 0;
+			}
+		}
+		
+		// IOMap 0x40 - LCDC
+		// IOMap 0x41 - LCD STAT
+		
+		// Rendering
+		if (GetBit (IOMap [0x40], 7)) { // LCD Operation
+			uint32_t CurrentLineClock = cpu->ClockCount - LastLineDrawClock;
+				
+			if (IOMap [0x44] < 144) { // Current line being drawn
+				if (CurrentLineClock <= 80) { // OAM Period
+					if (mmu->CurrentPPUMode == 0 || mmu->CurrentPPUMode == 1) { // Came from HBlank or VBlank
+						mmu->CurrentPPUMode = 2;
+						ppu->OAMSearch (mmu->Memory, IOMap);
+						PixelTransferDuration = 168 + (ppu->SpriteCount * (291 - 168)) / 10; // 10 Sprites should cause maximum duration = 291 Clocks
+
+						SetBit (IOMap [0x41], 0, 0); // Set them now so that the CPU can service the INT correctly
+						SetBit (IOMap [0x41], 1, 1);
+						
+						if (GetBit (IOMap [0x41], 5))
+							cpu->Interrupt (1);
+					}
+				} else if (CurrentLineClock <= 80 + PixelTransferDuration) { // Pixel Transfer
+					if (mmu->CurrentPPUMode == 2) {
+						mmu->CurrentPPUMode = 3;
+						
+						SetBit (IOMap [0x41], 0, 1);
+						SetBit (IOMap [0x41], 1, 1);
+					}
+				} else { // HBlank
+					if (mmu->CurrentPPUMode == 3) {
+						mmu->CurrentPPUMode = 0;
+						
+						SetBit (IOMap [0x41], 0, 0);
+						SetBit (IOMap [0x41], 1, 0);
+						
+						if (GetBit (IOMap [0x41], 3))
+							cpu->Interrupt (1);
+					}
+				}
+			} else {
+				if (mmu->CurrentPPUMode == 0) { // VBlank
+					mmu->CurrentPPUMode = 1;
+					
+					SetBit (IOMap [0x41], 0, 1);
+					SetBit (IOMap [0x41], 1, 0);
+					
+					cpu->Interrupt (0);
+					
+					if (GetBit (IOMap [0x41], 4))
+						cpu->Interrupt (1);
+				}
+			}
+			
+			if (CurrentLineClock >= (114 << 2)) { // Passed On a New Line
+				LastLineDrawClock = cpu->ClockCount;
+				ppu->Update (mmu->Memory, IOMap);
+				
+				if (IOMap [0x44] == IOMap [0x45]) { // Coincidence LY, LYC
+					SetBit (IOMap [0x41], 2, 1);
+					if (GetBit (IOMap [0x41], 6))
+						cpu->Interrupt (1);
+				} else
+					SetBit (IOMap [0x41], 2, 0);
+			}
+		}
+		
+		// Timer
+		// TODO Timer Obscure Behaviour
+		if (GetBit (IOMap [0x07], 2)) { // TIMCONT
+			uint32_t TimerDelay = 0;
+			if (GetBit (IOMap [0x07], 0)) {
+				if (GetBit (IOMap [0x07], 1))
+					TimerDelay = 256;
+				else
+					TimerDelay = 16;
+			} else if (GetBit (IOMap [0x07], 1))
+				TimerDelay = 64;
+			else
+				TimerDelay = 1024;
+			
+			if (cpu->ClockCount - LastTimerClock >= TimerDelay) {
+				LastTimerClock = cpu->ClockCount;
+				IOMap [0x05]++; // TIMECNT
+				
+				if (IOMap [0x05] == 1) { // 1 clock delay
+					IOMap [0x05] = IOMap [0x06]; // TIMEMOD
+					cpu->Interrupt (2);
+				}
 			}
 		}
 		
@@ -394,94 +488,6 @@ void CPULoop (CPU* cpu, MMU* mmu, PPU* ppu) {
 				cpu->Interrupt (4);
 		}
 		
-		// IOMap 0x40 - LCDC
-		// IOMap 0x41 - LCD STAT
-		
-		// Rendering
-		if (GetBit (IOMap [0x40], 7)) { // LCD Operation
-			uint32_t CurrentLineClock = cpu->ClockCount - LastLineDrawClock;
-				
-			if (ppu->CurrentY < 144) {
-				if (CurrentLineClock <= 80) { // OAM Period
-					if (CurrentPPUMode == 0 || CurrentPPUMode == 1) { // Came from HBlank or VBlank
-						CurrentPPUMode = 2;
-						ppu->OAMSearch (mmu->Memory, IOMap);
-						PixelTransferDuration = 168 + (ppu->SpriteCount * (291 - 168)) / 10; // 10 Sprites should cause maximum duration = 291 Clocks
-
-						SetBit (IOMap [0x41], 0, 0); // Set them now so that the CPU can service the INT correctly
-						SetBit (IOMap [0x41], 1, 1);
-						
-						if (GetBit (IOMap [0x41], 5))
-							cpu->Interrupt (1);
-					}
-				} else if (CurrentLineClock <= 80 + PixelTransferDuration) { // Pixel Transfer
-					if (CurrentPPUMode == 2) {
-						CurrentPPUMode = 3;
-						
-						SetBit (IOMap [0x41], 0, 1);
-						SetBit (IOMap [0x41], 1, 1);
-					}
-				} else { // HBlank
-					if (CurrentPPUMode == 3) {
-						CurrentPPUMode = 0;
-						
-						SetBit (IOMap [0x41], 0, 0);
-						SetBit (IOMap [0x41], 1, 0);
-						
-						if (GetBit (IOMap [0x41], 3))
-							cpu->Interrupt (1);
-					}
-				}
-			} else {
-				if (CurrentPPUMode == 0) { // VBlank
-					CurrentPPUMode = 1;
-					
-					SetBit (IOMap [0x41], 0, 1);
-					SetBit (IOMap [0x41], 1, 0);
-					
-					cpu->Interrupt (0);
-					
-					if (GetBit (IOMap [0x41], 4))
-						cpu->Interrupt (1);
-				}
-			}
-			
-			if (CurrentLineClock >= (144 << 2)) { // Passed On a New Line
-				LastLineDrawClock = cpu->ClockCount;
-				ppu->Update (mmu->Memory, IOMap);
-				
-				if (ppu->CurrentY == IOMap [0x45]) { // Coincidence LY, LYC
-					SetBit (IOMap [0x41], 2, 1);
-					if (GetBit (IOMap [0x41], 6))
-						cpu->Interrupt (1);
-				} else
-					SetBit (IOMap [0x41], 2, 0);
-			}
-		}
-		
-		// Timer
-		if (GetBit (IOMap [0x07], 2)) { // TIMCONT
-			uint32_t TimerDelay = 0;
-			if (GetBit (IOMap [0x07], 0)) {
-				if (GetBit (IOMap [0x07], 1))
-					TimerDelay = 16384;
-				else
-					TimerDelay = 262144;
-			} else if (GetBit (IOMap [0x07], 1))
-				TimerDelay = 65536;
-			else
-				TimerDelay = 4096;
-			
-			if (cpu->ClockCount - LastTimerClock >= ClocksPerSec / TimerDelay) {
-				LastTimerClock = cpu->ClockCount;
-				IOMap [0x05]++; // TIMECNT
-				if (IOMap [0x05] == 0x00) {
-					IOMap [0x05] = IOMap [0x06]; // TIMEMOD
-					cpu->Interrupt (2); // Timer Overflow Interrupt
-				}
-			}
-		}
-		
 		// DIV Register
 		if (cpu->ClockCount - LastDivClock >= 256) { // DIV increases every 256 clocks
 			LastDivClock = cpu->ClockCount;
@@ -492,7 +498,7 @@ void CPULoop (CPU* cpu, MMU* mmu, PPU* ppu) {
 			uint8_t OldDMA = IOMap [0x46];
 			cpu->Clock ();
 			if (IOMap [0x46] != OldDMA) // DMA Write
-				cpu->ClockCount += 160;
+				cpu->ClockCount += (160 << 2) + 4;
 		}
 	} 
 }

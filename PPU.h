@@ -12,10 +12,10 @@ public:
 	~PPU ();
 	void OAMSearch (uint8_t* Memory, uint8_t* IOMap);
 	void Update (uint8_t* Memory, uint8_t* IOMap);
-	uint8_t CurrentY = 0;
 	uint8_t SpriteCount = 0;
 private:
 	uint16_t PixelSize;
+	uint8_t CurrentY = 0;
 	uint16_t Width = 160; // 160
 	uint16_t Height = 144; // 144
 	SDL_Window* MainWindow;

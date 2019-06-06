@@ -43,6 +43,9 @@ class MMU {
 		uint8_t SelectRAMBank = 0;
 		uint8_t RTCRegister [0x0D];
 		uint8_t ExternalRAMSize = 0;
+		
+		// VRAM Status
+		uint8_t CurrentPPUMode = 1;
 	
 		// Convenience Pointers
 		uint8_t* IOMap = Memory + 0xFF00;

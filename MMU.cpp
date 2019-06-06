@@ -36,12 +36,25 @@ void MMU::SetByteAt (uint16_t Address, uint8_t Value) {
 	switch (Address) {
 		case 0xFF01: printf ("%c", Value); fflush (stdout); return; // SB
 		case 0xFF04: Value = 0; return; // DIV Register, Always write 0
-		case 0xFF46: memcpy (Memory + 0xFE00, Memory + (Value << 8), 0xA0); return; // DMA
+		case 0xFF46: if (CurrentPPUMode < 2) memcpy (Memory + 0xFE00, Memory + (Value << 8), 0xA0); return; // DMA
 		default: break;
 	}
 	
 	if (Address >= 0xE000 && Address < 0xFE00) // 8KB Internal RAM Echo
 		Address -= 0x2000;
+	
+	if (Address >= 0xFE00 && Address < 0xFEA0) { // OAM
+		if (CurrentPPUMode >= 2) // Inaccessible
+			return;
+	}
+	
+	if (Address >= 0x8000 && Address < 0xA000) { // VRAM
+		if (CurrentPPUMode >= 3) // Inaccessible
+			return;
+	}
+	
+	if (Address >= 0xFEA0 && Address < 0xFF00) // Unused Memory Area, Ignore write
+		return;
 	
 	if (ROMType == 1) {
 		if (Address <= 0x1FFF) { // Toggle External RAM

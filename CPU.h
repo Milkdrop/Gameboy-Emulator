@@ -2,6 +2,7 @@
 #include <stdio.h>
 #include <SDL2/SDL.h>
 #include "MMU.h"
+#include "utils.h"
 #ifndef CPU_H
 #define CPU_H
 
