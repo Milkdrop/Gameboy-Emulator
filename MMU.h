@@ -8,10 +8,8 @@
 class MMU {
 	public:
 		MMU ();
-		~MMU ();
 		uint8_t GetByteAt (uint16_t Address);
 		void SetByteAt (uint16_t Address, uint8_t Value);
-		void SetBytesAt (uint16_t Address, uint8_t* Buffer, size_t BufferSize);
 		
 		uint16_t GetWordAt (uint16_t Address);
 		void SetWordAt (uint16_t Address, uint16_t Value);
@@ -41,7 +39,7 @@ class MMU {
 		// ROM Status
 		uint8_t ExternalRAMEnabled = 0;
 		uint8_t CurrentRAMBank = 0;
-		uint8_t CurrentROMBank = 1;
+		uint8_t CurrentROMBank = 1; // Default
 		uint8_t SelectRAMBank = 0;
 		uint8_t RTCRegister [0x0D];
 		uint8_t ExternalRAMSize = 0;

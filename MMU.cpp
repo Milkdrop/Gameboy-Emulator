@@ -4,19 +4,12 @@ MMU::MMU () {
 	memset (Memory, 0, sizeof(Memory));
 }
 
-MMU::~MMU () {
-	printf ("Deleting ROM\n");
-	free (ROM);
-	printf ("OK MMU\n");
-	free (ExternalRAM);
-	printf ("OK MMU\n");
-	free (RTCRegister);
-	printf ("OK MMU\n");
-	free (Memory);
-	printf ("OK MMU fin\n");
-}
-
 uint8_t MMU::GetByteAt (uint16_t Address) {
+	if (Address < 0x4000)
+		return ROM [Address]; // ROM Bank 0
+	else if (Address < 0x8000)
+		return ROM [0x4000 * CurrentROMBank + (Address - 0x4000)]; // ROM Bank n
+	
 	if (Address >= 0xE000 && Address < 0xFE00) // 8KB Internal RAM Echo
 		Address -= 0x2000;
 	
@@ -27,18 +20,12 @@ uint8_t MMU::GetByteAt (uint16_t Address) {
 			}
 		}
 		
-		if (Address >= 0x4000 && Address < 0x8000) // Switchable Bank
-			return ROM [0x4000 * CurrentROMBank + (Address - 0x4000)];
 	} else if (ROMType == 3) {
 		if (Address >= 0xA000 && Address < 0xC000) { // Read from External RAM / RTC
 			if (CurrentRAMBank <= 0x07)
 				return ExternalRAM [0x2000 * CurrentRAMBank + (Address - 0xA000)];
 			else
 				return RTCRegister [CurrentRAMBank];
-		}
-		
-		if (Address >= 0x4000 && Address < 0x8000) { // Switchable Bank
-			return ROM [0x4000 * CurrentROMBank + (Address - 0x4000)];
 		}
 	}
 	
@@ -47,9 +34,9 @@ uint8_t MMU::GetByteAt (uint16_t Address) {
 
 void MMU::SetByteAt (uint16_t Address, uint8_t Value) {
 	switch (Address) {
-		case 0xFF01: printf ("%c", Value); fflush (stdout); break; // SB
-		case 0xFF04: Value = 0; break; // DIV Register, Always write 0
-		case 0xFF46: memcpy (Memory + 0xFE00, Memory + (Value << 8), 0xA0); break; // DMA
+		case 0xFF01: printf ("%c", Value); fflush (stdout); return; // SB
+		case 0xFF04: Value = 0; return; // DIV Register, Always write 0
+		case 0xFF46: memcpy (Memory + 0xFE00, Memory + (Value << 8), 0xA0); return; // DMA
 		default: break;
 	}
 	
@@ -58,10 +45,7 @@ void MMU::SetByteAt (uint16_t Address, uint8_t Value) {
 	
 	if (ROMType == 1) {
 		if (Address >= 0x0000 && Address <= 0x1FFF) { // Toggle External RAM
-			if (Value == 0x0A)
-				ExternalRAMEnabled = 1;
-			else
-				ExternalRAMEnabled = 0;
+			ExternalRAMEnabled = (Value == 0x0A); // Active only if gb writes 0x0A
 			return;
 		} else if (Address >= 0x2000 && Address < 0x4000) { // Write lower 5 bits of ROM Bank
 			CurrentROMBank &= 0b11100000;
@@ -94,10 +78,7 @@ void MMU::SetByteAt (uint16_t Address, uint8_t Value) {
 		
 	} else if (ROMType == 3) {
 		if (Address >= 0x0000 && Address < 0x2000) { // Toggle External RAM / RTC
-			if (Value == 0x0A)
-				ExternalRAMEnabled = 1;
-			else
-				ExternalRAMEnabled = 0;
+			ExternalRAMEnabled = (Value == 0x0A);
 			return;
 		} else if (Address >= 0x2000 && Address < 0x4000) { // Choose ROM Bank
 			if (Value == 0)
@@ -130,8 +111,4 @@ uint16_t MMU::GetWordAt (uint16_t Address) {
 void MMU::SetWordAt (uint16_t Address, uint16_t Value) {
 	SetByteAt (Address + 1, Value >> 8);
 	SetByteAt (Address, Value & 0xFF);
-}
-
-void MMU::SetBytesAt (uint16_t Address, uint8_t* Buffer, size_t BufferSize) {
-	memcpy (Memory + Address, Buffer, BufferSize);
 }

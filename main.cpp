@@ -20,6 +20,7 @@ uint8_t ROMwBattery [] = {0x03, 0x06, 0x09, 0x0D, 0x0F, 0x10, 0x1B, 0x1E, 0x20, 
 uint8_t ROMwRAM [] = {0x02, 0x03, 0x06, 0x08, 0x09, 0x0C, 0x0D, 0x10, 0x12, 0x13, 0x1A, 0x1B, 0x1D, 0x1E, 0x20, 0x22, 0xFF};
 
 char* ROMFilename;
+char* SaveFilename;
 
 int main (int argc, char** argv) {
 	if (argc < 2) {
@@ -41,7 +42,7 @@ int main (int argc, char** argv) {
 	CPU* cpu = new CPU (mmu);
 	PPU* ppu = new PPU ("Gameboy", 2);
 	
-	ROMFilename = argv[1];
+	ROMFilename = argv[1]; // Keep it for other functions to use
 	LoadROM (mmu);
 	
 	// Loop
@@ -53,12 +54,12 @@ int main (int argc, char** argv) {
 }
 
 void OpenFileError (const char* Filename) {
-	printf ("\n[ERR] There was an error opening the file: %s\n", Filename);
+	printf ("[ERR] There was an error opening the file: %s\n", Filename);
 	exit(1);
 }
 
 void LoadROM (MMU* mmu) {
-	printf ("Opening ROM %s...", ROMFilename);
+	printf ("[INFO] Opening ROM %s\n", ROMFilename);
 	
 	FILE* ROMfd = fopen (ROMFilename, "rb");
 	if (ROMfd == 0)
@@ -68,34 +69,27 @@ void LoadROM (MMU* mmu) {
 	uint32_t ROMSize = ftell (ROMfd);
 	ROMfd = freopen (ROMFilename, "rb", ROMfd);
 	
-	uint8_t* Buffer = (uint8_t*) malloc (ROMSize);
-	
-	if (fread(Buffer, 1, ROMSize, ROMfd) != ROMSize)
+	if (fread(mmu->ROM, 1, ROMSize, ROMfd) != ROMSize)
 		OpenFileError (ROMFilename);
 	
-	memcpy (mmu->ROM, Buffer, ROMSize);
-	mmu->SetBytesAt (0x0000, Buffer, 0x10000);
-	free (Buffer);
 	fclose (ROMfd);
-	printf ("OK\n");
 	
 	AnalyzeROM (mmu);
 	
-	char* SavefileName = (char*) malloc (strlen (ROMFilename) + 4);
-	strcpy (SavefileName, ROMFilename);
-	strcat (SavefileName, ".sav");
+	SaveFilename = (char*) malloc (strlen (ROMFilename) + 4); // Set savefilename for further use
+	strcpy (SaveFilename, ROMFilename);
+	strcat (SaveFilename, ".sav");
 	
-	FILE* Savefile = fopen (SavefileName, "r");
+	FILE* Savefile = fopen (SaveFilename, "r");
 	if (Savefile != NULL) {
-		printf ("[INFO] Found savefile for game at %s\n", SavefileName);
+		printf ("[INFO] Found savefile for game at %s\n", SaveFilename);
 		
-		if (fread (mmu->ExternalRAM, 1, 0x2000 * mmu->ExternalRAMSize, Savefile) != 0x2000 * mmu->ExternalRAMSize)
-			OpenFileError (SavefileName);
+		uint32_t SaveSize = 0x2000 * mmu->ExternalRAMSize;
+		if (fread (mmu->ExternalRAM, 1, SaveSize, Savefile) != SaveSize) // Load External RAM
+			OpenFileError (SaveFilename);
 		
 		fclose (Savefile);
 	}
-	
-	free (SavefileName);
 }
 
 void AnalyzeROM (MMU* mmu) {
@@ -195,15 +189,11 @@ void SaveGame (MMU* mmu) {
 	if (mmu->ExternalRAMSize == 0) {
 		printf ("[WARN] ROM Doesn't have any External RAM to save!\n");
 	} else {
-		char* SavefileName = (char*) malloc (strlen (ROMFilename) + 5);
-		strcpy (SavefileName, ROMFilename);
-		strcat (SavefileName, ".sav");
-		printf ("[INFO] Saving External ROM to %s\n", SavefileName);
+		printf ("[INFO] Saving External ROM to %s\n", SaveFilename);
 
-		FILE* Savefile = fopen (SavefileName, "wb");
+		FILE* Savefile = fopen (SaveFilename, "wb");
 		fwrite (mmu->ExternalRAM, 1, 0x2000 * mmu->ExternalRAMSize, Savefile);
 		fclose (Savefile);
-		free (SavefileName);
 	}
 }
 
@@ -231,8 +221,6 @@ void CPULoop (CPU* cpu, MMU* mmu, PPU* ppu) {
 	uint8_t* IOMap = mmu->IOMap;
 	uint64_t CurrentTime = 0;
 	uint64_t LastInput = 0;
-	uint64_t LastTimer = 0;
-	uint64_t LastDiv = 0;
 	uint8_t PressDebug = 0;
 	uint8_t PressControlS = 0;
 	uint8_t PressControlR = 0;
@@ -242,8 +230,11 @@ void CPULoop (CPU* cpu, MMU* mmu, PPU* ppu) {
 	uint32_t LastLineDraw = 0;
 	uint32_t CurrentPPUMode = 1;
 	uint32_t PixelTransferDuration = 0;
-	uint64_t ClocksPerMS = 4194;
-	uint64_t LastClock = 0;
+	uint32_t ClocksPerSec = 4194304;
+	uint32_t ClocksPerMS = ClocksPerSec / 1000;
+	uint32_t LastClock = 0;
+	uint32_t LastTimerClock = 0;
+	uint32_t LastDivClock = 0;
 	uint64_t LastLoop = 0;
 	
 	// Main Loop
@@ -254,9 +245,7 @@ void CPULoop (CPU* cpu, MMU* mmu, PPU* ppu) {
 			if (cpu->ClockCount - LastClock >= ClocksPerMS && !Keyboard [SDL_SCANCODE_SPACE]) { // Throttle - Space for max speed
 				// TODO: nanosleep ?
 				continue;
-			}
-			
-			if (cpu->ClockCount - LastClock >= (ClocksPerMS >> 2) && Keyboard [SDL_SCANCODE_BACKSPACE]) { // x4 slow motion
+			} else if (cpu->ClockCount - LastClock >= (ClocksPerMS >> 2) && Keyboard [SDL_SCANCODE_BACKSPACE]) { // x4 slow motion
 				// TODO: nanosleep ?
 				continue;
 			}
@@ -439,19 +428,19 @@ void CPULoop (CPU* cpu, MMU* mmu, PPU* ppu) {
 			else
 				TimerDelay = 4096;
 			
-			if (CurrentTime - LastTimer >= 1000000 / TimerDelay || LastTimer > CurrentTime) {
-				LastTimer = CurrentTime;
+			if (cpu->ClockCount - LastTimerClock >= ClocksPerSec / TimerDelay) {
+				LastTimerClock = cpu->ClockCount;
 				IOMap [0x05]++; // TIMECNT
 				if (IOMap [0x05] == 0x00) {
 					IOMap [0x05] = IOMap [0x06]; // TIMEMOD
-					cpu->Interrupt (2);
+					cpu->Interrupt (2); // Timer Overflow Interrupt
 				}
 			}
 		}
 		
 		// DIV Register
-		if (CurrentTime - LastDiv >= 1000000 / 16384 || LastDiv > CurrentTime) {
-			LastDiv = CurrentTime;
+		if (cpu->ClockCount - LastDivClock >= 256) { // DIV increases every 256 clocks
+			LastDivClock = cpu->ClockCount;
 			IOMap [0x04]++;
 		}
 		
