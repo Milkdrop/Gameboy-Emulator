@@ -19,9 +19,6 @@ PPU::PPU (const char* Title, const uint16_t _PixelSize) {
 }
 
 PPU::~PPU () {
-	free (Pixels);
-	free (OAMQueue);
-	
 	SDL_DestroyTexture (MainTexture);
 	SDL_DestroyRenderer (MainRenderer);
 	SDL_DestroyWindow (MainWindow);

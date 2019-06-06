@@ -29,7 +29,7 @@ CPU::CPU (MMU* _mmu) {
 	reg_DE = 0x00D8;
 	reg_HL = 0x014D;
 	SP = 0xFFFE; // Setup Stack
-	PC = 0x100;
+	PC = 0x0100;
 	
 	// Setup I/O
 	mmu->SetByteAt (0xFF10, 0x80);
@@ -62,10 +62,6 @@ void CPU::Debug () {
 	printf ("SP: 0x%04x\n", SP);
 	printf ("PC: 0x%04x\n", PC);
 	printf ("\n");
-	
-	for (int i = 0x10; i >= -0x10; i -= 2) {
-		//printf ("0x%04x: 0x%04x\n", 0xDD02 + i, mmu->GetWordAt (0xDD02 + i));
-	}
 }
 
 void CPU::Interrupt (uint8_t ID) {
@@ -93,47 +89,47 @@ void CPU::Interrupt (uint8_t ID) {
 	}
 }
 
-uint16_t CPU::StackPop () {
+inline uint16_t CPU::StackPop () {
 	uint16_t Value = mmu->GetWordAt (SP);
 	SP += 2;
 	return Value;
 }
 
-void CPU::StackPush (uint16_t Value) {
+inline void CPU::StackPush (uint16_t Value) {
 	SP -= 2;
 	mmu->SetWordAt (SP, Value);
 }
 
-void CPU::SetZ (uint8_t Value) {
+inline void CPU::SetZ (uint8_t Value) {
 	*reg_F &= 0b01111111;
 	*reg_F |= Value << 7;
-	flag_Z = (*reg_F >> 7) & 1;
+	flag_Z = Value;
 }
 
-void CPU::SetN (uint8_t Value) {
+inline void CPU::SetN (uint8_t Value) {
 	*reg_F &= 0b10111111;
 	*reg_F |= Value << 6;
-	flag_N = (*reg_F >> 6) & 1;
+	flag_N = Value;
 }
 
-void CPU::SetH (uint8_t Value) {
+inline void CPU::SetH (uint8_t Value) {
 	*reg_F &= 0b11011111;
 	*reg_F |= Value << 5;
-	flag_H = (*reg_F >> 5) & 1;
+	flag_H = Value;
 }
 
-void CPU::SetC (uint8_t Value) {
+inline void CPU::SetC (uint8_t Value) {
 	*reg_F &= 0b11101111;
 	*reg_F |= Value << 4;
-	flag_C = (*reg_F >> 4) & 1;
+	flag_C = Value;
 }
 
-uint8_t CPU::GetCarry (uint16_t OpA, uint16_t OpB, uint8_t Carry, uint8_t BitNo) {
+inline uint8_t CPU::GetCarry (uint16_t OpA, uint16_t OpB, uint8_t Carry, uint8_t BitNo) {
 	uint32_t Result = OpA + OpB + Carry;
 	return ((Result ^ OpA ^ OpB) >> BitNo) & 1;
 }
 
-void CPU::SetFlagsAdd (uint8_t OpA, uint8_t OpB, uint8_t Carry, uint8_t CarrySetMode) {
+inline void CPU::SetFlagsAdd (uint8_t OpA, uint8_t OpB, uint8_t Carry, uint8_t CarrySetMode) {
 	// CarrySetMode: 0 - HC, 1 - C, 2 - H, 3 - None
 	uint8_t Result = OpA + OpB + Carry;
 	
@@ -147,7 +143,7 @@ void CPU::SetFlagsAdd (uint8_t OpA, uint8_t OpB, uint8_t Carry, uint8_t CarrySet
 		SetC (GetCarry (OpA, OpB, Carry, 8));
 }
 
-void CPU::SetFlagsSub (uint8_t OpA, uint8_t OpB, uint8_t Carry, uint8_t CarrySetMode) {
+inline void CPU::SetFlagsSub (uint8_t OpA, uint8_t OpB, uint8_t Carry, uint8_t CarrySetMode) {
 	SetFlagsAdd (OpA, ~OpB, !Carry, CarrySetMode);
 	SetN (1);
 	
@@ -160,14 +156,12 @@ void CPU::SetFlagsSub (uint8_t OpA, uint8_t OpB, uint8_t Carry, uint8_t CarrySet
 
 void CPU::Clock () {
 	uint8_t Instruction = mmu->GetByteAt (PC++);
-	
 	Execute (Instruction);
 }
 
-uint8_t Shown = 0;
-
 void CPU::Execute (uint8_t Instruction) {
 	ClockCount += ClocksPerInstruction [Instruction];
+	InstructionCount++;
 	
 	//printf ("0x%04x: Executing 0x%02x\n", PC - 1, Instruction);
 

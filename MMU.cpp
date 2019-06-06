@@ -44,7 +44,7 @@ void MMU::SetByteAt (uint16_t Address, uint8_t Value) {
 		Address -= 0x2000;
 	
 	if (ROMType == 1) {
-		if (Address >= 0x0000 && Address <= 0x1FFF) { // Toggle External RAM
+		if (Address <= 0x1FFF) { // Toggle External RAM
 			ExternalRAMEnabled = (Value == 0x0A); // Active only if gb writes 0x0A
 			return;
 		} else if (Address >= 0x2000 && Address < 0x4000) { // Write lower 5 bits of ROM Bank
@@ -77,7 +77,7 @@ void MMU::SetByteAt (uint16_t Address, uint8_t Value) {
 		}
 		
 	} else if (ROMType == 3) {
-		if (Address >= 0x0000 && Address < 0x2000) { // Toggle External RAM / RTC
+		if (Address < 0x2000) { // Toggle External RAM / RTC
 			ExternalRAMEnabled = (Value == 0x0A);
 			return;
 		} else if (Address >= 0x2000 && Address < 0x4000) { // Choose ROM Bank

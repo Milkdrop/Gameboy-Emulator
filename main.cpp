@@ -1,6 +1,6 @@
 #include <stdint.h>
 #include <stdio.h>
-#include <time.h>
+#include <chrono>
 #include <SDL2/SDL.h>
 #include "PPU.h"
 #include "MMU.h"
@@ -15,6 +15,7 @@ void CPULoop (CPU* cpu, MMU* mmu, PPU* ppu);
 void SaveGame (MMU* mmu);
 void SaveState (uint8_t ID);
 void LoadState (uint8_t ID);
+void Reset (MMU* &mmu, CPU* &cpu, PPU* &ppu);
 
 uint8_t ROMwBattery [] = {0x03, 0x06, 0x09, 0x0D, 0x0F, 0x10, 0x1B, 0x1E, 0x20, 0xFF};
 uint8_t ROMwRAM [] = {0x02, 0x03, 0x06, 0x08, 0x09, 0x0C, 0x0D, 0x10, 0x12, 0x13, 0x1A, 0x1B, 0x1D, 0x1E, 0x20, 0x22, 0xFF};
@@ -22,6 +23,7 @@ uint8_t ROMwRAM [] = {0x02, 0x03, 0x06, 0x08, 0x09, 0x0C, 0x0D, 0x10, 0x12, 0x13
 char* ROMFilename;
 char* SaveFilename;
 
+// Initializations
 int main (int argc, char** argv) {
 	if (argc < 2) {
 		printf ("Please specify Game ROM Filename:\n");
@@ -53,6 +55,7 @@ int main (int argc, char** argv) {
 	printf ("\n\n[INFO] CPU Stopped.\n");
 }
 
+// ROM Management
 void OpenFileError (const char* Filename) {
 	printf ("[ERR] There was an error opening the file: %s\n", Filename);
 	exit(1);
@@ -185,6 +188,7 @@ void AnalyzeROM (MMU* mmu) {
 	mmu->ROMRAM = ROMRAM;
 }
 
+// State modifications
 void SaveGame (MMU* mmu) {
 	if (mmu->ExternalRAMSize == 0) {
 		printf ("[WARN] ROM Doesn't have any External RAM to save!\n");
@@ -207,6 +211,17 @@ void SaveState (uint8_t ID) {
 	// TODO
 }
 
+void Reset (MMU* &mmu, CPU* &cpu, PPU* &ppu) {
+	delete mmu;
+	delete cpu;
+	delete ppu;
+
+	mmu = new MMU;
+	cpu = new CPU (mmu);
+	ppu = new PPU ("Gameboy", 2);
+	LoadROM (mmu);
+}
+
 /* IO TODO
 FF02
 FF04
@@ -217,46 +232,68 @@ FF10 -> FF26 // Sound
 void CPULoop (CPU* cpu, MMU* mmu, PPU* ppu) {
 	// Main Loop Variables
 	SDL_Event ev;
-	const uint8_t *Keyboard = SDL_GetKeyboardState(NULL);
+	const uint8_t *Keyboard = SDL_GetKeyboardState (NULL);
 	uint8_t* IOMap = mmu->IOMap;
+	
+	// Time Events - Clock independent
+	auto StartTime = std::chrono::high_resolution_clock::now ();
 	uint64_t CurrentTime = 0;
-	uint64_t LastInput = 0;
+	uint64_t LastInputTime = 0;
+	uint64_t LastLoopTime = 0;
+	uint64_t LastDebugTime = 0; // To show info
+	
+	// Input status
 	uint8_t PressDebug = 0;
 	uint8_t PressControlS = 0;
 	uint8_t PressControlR = 0;
 	uint8_t Quit = 0;
 	
 	// Timing
-	uint32_t LastLineDraw = 0;
+	uint32_t LastLineDrawClock = 0;
 	uint32_t CurrentPPUMode = 1;
 	uint32_t PixelTransferDuration = 0;
 	uint32_t ClocksPerSec = 4194304;
 	uint32_t ClocksPerMS = ClocksPerSec / 1000;
-	uint32_t LastClock = 0;
+	uint32_t LastMSClock = 0;
 	uint32_t LastTimerClock = 0;
 	uint32_t LastDivClock = 0;
-	uint64_t LastLoop = 0;
-	
+	uint32_t LastDebugClock = 0;
+	uint32_t LastDebugInstructionCount = 0;
+
 	// Main Loop
 	while (!Quit) {
-		CurrentTime = clock(); // In Microseconds (On *UNIX)
+		auto ElapsedTime = std::chrono::high_resolution_clock::now () - StartTime;
+		CurrentTime = std::chrono::duration_cast<std::chrono::microseconds> (ElapsedTime).count (); // In Microseconds (On *UNIX)
 		
-		if (CurrentTime - LastLoop <= 1000) {
-			if (cpu->ClockCount - LastClock >= ClocksPerMS && !Keyboard [SDL_SCANCODE_SPACE]) { // Throttle - Space for max speed
+		// Throttle
+		if (CurrentTime - LastLoopTime <= 1000) {
+			if (cpu->ClockCount - LastMSClock >= ClocksPerMS && !Keyboard [SDL_SCANCODE_SPACE]) { // Press space to disable throttling
 				// TODO: nanosleep ?
 				continue;
-			} else if (cpu->ClockCount - LastClock >= (ClocksPerMS >> 2) && Keyboard [SDL_SCANCODE_BACKSPACE]) { // x4 slow motion
+			} else if (cpu->ClockCount - LastMSClock >= (ClocksPerMS >> 2) && Keyboard [SDL_SCANCODE_BACKSPACE]) { // x4 slow motion
 				// TODO: nanosleep ?
 				continue;
 			}
 		} else {
-			LastLoop = CurrentTime;
-			LastClock = cpu->ClockCount;
+			LastLoopTime = CurrentTime;
+			LastMSClock = cpu->ClockCount;
 		}
 		
+		// Show debug info
+		if (CurrentTime - LastDebugTime >= 5000000) { // Every 5 Seconds
+			LastDebugTime = CurrentTime;
+			uint32_t ClocksPassed = cpu->ClockCount - LastDebugClock;
+			uint32_t InstructionsPassed = cpu->InstructionCount - LastDebugInstructionCount;
+			
+			printf ("[INFO] CPU Running at @%fMHz (%d Instructions/s)\n", (float) ClocksPassed / 5000000, InstructionsPassed / 5);
+			
+			LastDebugClock = cpu->ClockCount;
+			LastDebugInstructionCount = cpu->InstructionCount;
+		}
+			
 		// Input - SDL
-		if (CurrentTime - LastInput >= 1000000 / 30 || LastInput > CurrentTime) { // 30 Hz
-			LastInput = CurrentTime;
+		if (CurrentTime - LastInputTime >= 33333) { // 30 Hz
+			LastInputTime = CurrentTime;
 			
 			while (SDL_PollEvent(&ev)) {
 				if (ev.type == SDL_QUIT) {
@@ -278,7 +315,6 @@ void CPULoop (CPU* cpu, MMU* mmu, PPU* ppu) {
 			}
 			
 			if ((Keyboard [SDL_SCANCODE_LCTRL] || Keyboard [SDL_SCANCODE_RCTRL])) { // Save external RAM
-					
 				if (Keyboard [SDL_SCANCODE_S]) { // Save game
 					if (PressControlS == 0) {
 						PressControlS = 1;
@@ -291,22 +327,22 @@ void CPULoop (CPU* cpu, MMU* mmu, PPU* ppu) {
 					if (PressControlR == 0) {
 						PressControlR = 1;
 						
-						printf ("[INFO] Reseting State...\n");
-						delete mmu;
-						delete cpu;
-						delete ppu;
-
-						mmu = new MMU;
-						cpu = new CPU (mmu);
-						ppu = new PPU ("Gameboy", 2);
-			
-						LoadROM (mmu);
+						printf ("[INFO] State Reset\n");
+						Reset (mmu, cpu, ppu);
 						IOMap = mmu->IOMap;
 						
-						LastLineDraw = 0;
+						StartTime = std::chrono::high_resolution_clock::now ();
+						LastInputTime = 0;
+						LastLoopTime = 0;
+						LastDebugTime = 0;
+						
+						LastLineDrawClock = 0;
 						CurrentPPUMode = 1;
-						LastClock = 0;
-						LastLoop = 0;
+						
+						LastMSClock = 0;
+						LastTimerClock = 0;
+						LastDivClock = 0;
+						LastDebugClock = 0;
 					}
 				} else
 					PressControlR = 0;
@@ -356,11 +392,11 @@ void CPULoop (CPU* cpu, MMU* mmu, PPU* ppu) {
 		
 		// Rendering
 		if (GetBit (IOMap [0x40], 7)) { // LCD Operation
-			uint32_t CurrentLineClock = cpu->ClockCount - LastLineDraw;
+			uint32_t CurrentLineClock = cpu->ClockCount - LastLineDrawClock;
 				
 			if (ppu->CurrentY < 144) {
 				if (CurrentLineClock <= 80) { // OAM Period
-					if (CurrentPPUMode == 0 || CurrentPPUMode == 1) { // Came from VBlank or HBlank
+					if (CurrentPPUMode == 0 || CurrentPPUMode == 1) { // Came from HBlank or VBlank
 						CurrentPPUMode = 2;
 						ppu->OAMSearch (mmu->Memory, IOMap);
 						PixelTransferDuration = 168 + (ppu->SpriteCount * (291 - 168)) / 10; // 10 Sprites should cause maximum duration = 291 Clocks
@@ -404,8 +440,9 @@ void CPULoop (CPU* cpu, MMU* mmu, PPU* ppu) {
 			}
 			
 			if (CurrentLineClock >= (144 << 2)) { // Passed On a New Line
-				LastLineDraw = cpu->ClockCount;
+				LastLineDrawClock = cpu->ClockCount;
 				ppu->Update (mmu->Memory, IOMap);
+				
 				if (ppu->CurrentY == IOMap [0x45]) { // Coincidence LY, LYC
 					SetBit (IOMap [0x41], 2, 1);
 					if (GetBit (IOMap [0x41], 6))
@@ -419,9 +456,9 @@ void CPULoop (CPU* cpu, MMU* mmu, PPU* ppu) {
 		if (GetBit (IOMap [0x07], 2)) { // TIMCONT
 			uint32_t TimerDelay = 0;
 			if (GetBit (IOMap [0x07], 0)) {
-				if (GetBit (IOMap [0x07], 1)) {
+				if (GetBit (IOMap [0x07], 1))
 					TimerDelay = 16384;
-				} else
+				else
 					TimerDelay = 262144;
 			} else if (GetBit (IOMap [0x07], 1))
 				TimerDelay = 65536;

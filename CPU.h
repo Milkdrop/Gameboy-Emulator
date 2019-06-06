@@ -13,6 +13,7 @@ class CPU {
 		void Interrupt (uint8_t ID);
 	
 		uint32_t ClockCount = 0;
+		uint32_t InstructionCount = 0;
 		uint8_t Debugging = 0;
 	private:
 		MMU* mmu;
@@ -52,6 +53,10 @@ class CPU {
 		uint8_t Stopped = 0;
 		uint8_t EnableInterruptsFlag = 0;
 		uint8_t InterruptsEnabled = 0;
+	
+		// Functions - Convenience
+		uint8_t GetM (); // M = Value in memory pointed by reg_HL
+		void SetM (uint8_t Value);
 	
 		// Functions - Stack
 		void StackPush (uint16_t Value);
