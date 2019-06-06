@@ -7,6 +7,8 @@
 #include "CPU.h"
 #include "utils.h"
 
+using namespace Utils;
+
 void OpenFileError (const char* Filename);
 void LoadROM (MMU* mmu);
 void AnalyzeROM (MMU* mmu);
@@ -236,8 +238,7 @@ void CPULoop (CPU* cpu, MMU* mmu, PPU* ppu) {
 	uint8_t* IOMap = mmu->IOMap;
 	
 	// Time Events - Clock independent
-	auto StartTime = std::chrono::high_resolution_clock::now ();
-	uint64_t CurrentTime = 0;
+	Utils::StartTime = std::chrono::high_resolution_clock::now ();
 	uint64_t LastInputTime = 0;
 	uint64_t LastLoopTime = 0;
 	uint64_t LastDebugTime = 0; // To show info
@@ -262,17 +263,21 @@ void CPULoop (CPU* cpu, MMU* mmu, PPU* ppu) {
 
 	// Main Loop
 	while (!Quit) {
-		auto ElapsedTime = std::chrono::high_resolution_clock::now () - StartTime;
-		CurrentTime = std::chrono::duration_cast<std::chrono::microseconds> (ElapsedTime).count (); // In Microseconds (On *UNIX)
+		uint64_t CurrentTime = Utils::GetCurrentTime ();
 		
 		// Throttle
-		if (CurrentTime - LastLoopTime <= 1000) {
-			if (cpu->ClockCount - LastMSClock >= ClocksPerMS && !Keyboard [SDL_SCANCODE_SPACE]) { // Press space to disable throttling
-				// TODO: nanosleep ?
-				continue;
-			} else if (cpu->ClockCount - LastMSClock >= (ClocksPerMS >> 2) && Keyboard [SDL_SCANCODE_BACKSPACE]) { // x4 slow motion
-				// TODO: nanosleep ?
-				continue;
+		if (CurrentTime - LastLoopTime <= 1000) { // Check if Host CPU is faster
+			uint8_t Throttle = 0;
+			
+			if (cpu->ClockCount - LastMSClock >= ClocksPerMS && !Keyboard [SDL_SCANCODE_SPACE]) // Press space to disable throttling
+				Throttle = 1;
+			else if (cpu->ClockCount - LastMSClock >= (ClocksPerMS >> 2) && Keyboard [SDL_SCANCODE_BACKSPACE]) // x4 slow motion
+				Throttle = 1;
+			
+			if (Throttle) {
+				Utils::NanoSleep (1000 - (CurrentTime - LastLoopTime));
+				LastLoopTime = Utils::GetCurrentTime ();
+				LastMSClock = cpu->ClockCount;
 			}
 		} else {
 			LastLoopTime = CurrentTime;
@@ -331,7 +336,7 @@ void CPULoop (CPU* cpu, MMU* mmu, PPU* ppu) {
 						Reset (mmu, cpu, ppu);
 						IOMap = mmu->IOMap;
 						
-						StartTime = std::chrono::high_resolution_clock::now ();
+						Utils::StartTime = std::chrono::high_resolution_clock::now ();
 						LastInputTime = 0;
 						LastLoopTime = 0;
 						LastDebugTime = 0;

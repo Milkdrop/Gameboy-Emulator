@@ -6,6 +6,8 @@ uint8_t BGPalette [4];
 uint8_t SpritePalette0 [4];
 uint8_t SpritePalette1 [4];
 
+using namespace Utils;
+
 PPU::PPU (const char* Title, const uint16_t _PixelSize) {
 	PixelSize = _PixelSize;
 	
