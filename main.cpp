@@ -192,7 +192,7 @@ void AnalyzeROM (MMU* mmu) {
 
 // State modifications
 void SaveGame (MMU* mmu) {
-	if (mmu->ExternalRAMSize != 0 && mmu->ROMBattery) {
+	if (mmu->ExternalRAMSize != 0) {
 		printf ("[INFO] Saving External RAM (Savegame) to %s\n", SaveFilename);
 
 		FILE* Savefile = fopen (SaveFilename, "wb");
@@ -281,8 +281,8 @@ void CPULoop (CPU* cpu, MMU* mmu, PPU* ppu) {
 				uint32_t MicroSleepOvershoot = (LastLoopTime - CurrentTime) - usToSleep; // How much time it actually slept - time it had to sleep
 				ClockCompensation = ((ClocksPerSec / 1000000) * MicroSleepOvershoot) >> 2; // Dont use float, since time calculations are already inexact. Having a precise calculation here would result in a faster-than-GB CPU,
 																						   // also divide by 4, to accomodate extra inaccuracies
-				if (MicroSleepOvershoot > 4000)
-					printf ("[WARN] MicroSleep Overshoot is over 4ms (%d us), CPU can't catch up!\n", MicroSleepOvershoot);
+				if (MicroSleepOvershoot > 12000)
+					printf ("[WARN] MicroSleep Overshoot is over 12ms (%d us), CPU can't catch up!\n", MicroSleepOvershoot);
 			}
 		} else { // Passed one milisecond without throttling
 			LastLoopTime = CurrentTime;
