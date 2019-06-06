@@ -241,6 +241,7 @@ void CPULoop (CPU* cpu, MMU* mmu, PPU* ppu) {
 	auto StartTime = std::chrono::high_resolution_clock::now ();
 	uint64_t ClockCompensation = 0;
 	uint64_t LastInputTime = 0;
+	uint64_t LastRenderTime = 0;
 	uint64_t LastLoopTime = 0;
 	uint64_t LastDebugTime = 0; // To show info
 	
@@ -266,22 +267,25 @@ void CPULoop (CPU* cpu, MMU* mmu, PPU* ppu) {
 		uint64_t CurrentTime = GetCurrentTime (&StartTime);
 		
 		// Throttle
-		if (CurrentTime - LastLoopTime <= 1000) { // Check if Host CPU is faster
+		if (CurrentTime - LastLoopTime <= 4000) { // Check if Host CPU is faster, every 4ms
 			uint8_t Throttle = 0;
 			
-			if (cpu->ClockCount - LastMSClock >= ClocksPerMS + ClockCompensation && !Keyboard [SDL_SCANCODE_SPACE]) // Press space to disable throttling
+			if (cpu->ClockCount - LastMSClock >= (ClocksPerMS + ClockCompensation) << 2 && !Keyboard [SDL_SCANCODE_SPACE]) // Press space to disable throttling
 				Throttle = 1;
-			else if (cpu->ClockCount - LastMSClock >= ((ClocksPerMS + ClockCompensation) >> 2) && Keyboard [SDL_SCANCODE_BACKSPACE]) // x4 slow motion
+			else if (cpu->ClockCount - LastMSClock >= ClocksPerMS + ClockCompensation && Keyboard [SDL_SCANCODE_BACKSPACE]) // x4 slow motion
 				Throttle = 1;
 			
 			if (Throttle) {
-				uint32_t usToSleep = 1000 - (CurrentTime - LastLoopTime);
+				uint32_t usToSleep = 4000 - (CurrentTime - LastLoopTime);
 				MicroSleep (usToSleep);
 				LastLoopTime = GetCurrentTime (&StartTime);
 				LastMSClock = cpu->ClockCount;
 				
-				uint32_t MicroSleepOvershoot = (LastLoopTime - CurrentTime) - usToSleep;
+				uint32_t MicroSleepOvershoot = (LastLoopTime - CurrentTime) - usToSleep; // How much time it actually slept - time it had to sleep
 				ClockCompensation = ((float) ClocksPerSec / 1000000) * MicroSleepOvershoot;
+				
+				if (MicroSleepOvershoot > 4000)
+					printf ("[WARN] MicroSleep Overshoot is over 4ms (%d us), CPU can't catch up!\n", MicroSleepOvershoot);
 			}
 		} else { // Passed one milisecond without throttling
 			LastLoopTime = CurrentTime;
@@ -301,7 +305,7 @@ void CPULoop (CPU* cpu, MMU* mmu, PPU* ppu) {
 		}
 			
 		// Input - SDL
-		if (CurrentTime - LastInputTime >= 33333) { // 30 Hz
+		if (CurrentTime - LastInputTime >= 1000000 / 30) { // 30 Hz
 			LastInputTime = CurrentTime;
 			
 			while (SDL_PollEvent(&ev)) {
@@ -342,6 +346,7 @@ void CPULoop (CPU* cpu, MMU* mmu, PPU* ppu) {
 						
 						StartTime = std::chrono::high_resolution_clock::now ();
 						LastInputTime = 0;
+						LastRenderTime = 0;
 						LastLoopTime = 0;
 						LastDebugTime = 0;
 						
@@ -423,6 +428,11 @@ void CPULoop (CPU* cpu, MMU* mmu, PPU* ppu) {
 				} else
 					SetBit (IOMap [0x41], 2, 0);
 			}
+		}
+		
+		if (CurrentTime - LastRenderTime >= 1000000 / 50) { // 50 Hz
+			LastRenderTime = CurrentTime;
+			ppu->Render (); // Actual rendering on the screen
 		}
 		
 		// Timer

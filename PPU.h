@@ -12,6 +12,7 @@ public:
 	~PPU ();
 	void OAMSearch (uint8_t* Memory, uint8_t* IOMap);
 	void Update (uint8_t* Memory, uint8_t* IOMap);
+	void Render ();
 	uint8_t SpriteCount = 0;
 private:
 	uint16_t PixelSize;
@@ -22,6 +23,7 @@ private:
 	SDL_Renderer* MainRenderer;
 	SDL_Texture* MainTexture;
 	uint16_t Pixels [160 * 144];
+	uint16_t PixelsReady [160 * 144]; // When rendering, use these
 	uint8_t OAMQueue [10 * 4]; // 10 Sprites, 4 Bytes each
 	
 	// Drawing Functions

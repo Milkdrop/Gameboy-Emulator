@@ -13,13 +13,18 @@ uint8_t MMU::GetByteAt (uint16_t Address) {
 	if (Address >= 0xE000 && Address < 0xFE00) // 8KB Internal RAM Echo
 		Address -= 0x2000;
 	
+	if (Address >= 0xFE00 && Address < 0xFEA0) { // OAM
+		if (CurrentPPUMode >= 2) { // Inaccessible
+			printf ("[WARN] Blocked OAM Read\n");
+			return 0xFF;
+		}
+	}
+	
 	if (ROMType == 1) {
 		if (ExternalRAMEnabled) {
-			if (Address >= 0xA000 && Address < 0xC000) { // Read from External RAM
+			if (Address >= 0xA000 && Address < 0xC000) // Read from External RAM
 				return ExternalRAM [0x2000 * CurrentRAMBank + (Address - 0xA000)];
-			}
 		}
-		
 	} else if (ROMType == 3) {
 		if (Address >= 0xA000 && Address < 0xC000) { // Read from External RAM / RTC
 			if (CurrentRAMBank <= 0x07)
@@ -44,19 +49,28 @@ void MMU::SetByteAt (uint16_t Address, uint8_t Value) {
 		Address -= 0x2000;
 	
 	if (Address >= 0xFE00 && Address < 0xFEA0) { // OAM
-		if (CurrentPPUMode >= 2) // Inaccessible
+		if (CurrentPPUMode >= 2) { // Inaccessible
+			printf ("[WARN] Blocked OAM Write\n");
 			return;
+		}
 	}
 	
 	if (Address >= 0x8000 && Address < 0xA000) { // VRAM
-		if (CurrentPPUMode >= 3) // Inaccessible
+		if (CurrentPPUMode >= 3) { // Inaccessible
+			printf ("[WARN] Blocked VRAM Write\n");
 			return;
+		}
 	}
 	
 	if (Address >= 0xFEA0 && Address < 0xFF00) // Unused Memory Area, Ignore write
 		return;
 	
-	if (ROMType == 1) {
+	if (ROMType == 0) {
+		if (Address < 0x8000) {
+			printf ("[WARN] Blocked illegal ROM Write\n");
+			return;
+		}
+	} else if (ROMType == 1) {
 		if (Address <= 0x1FFF) { // Toggle External RAM
 			ExternalRAMEnabled = (Value == 0x0A); // Active only if gb writes 0x0A
 			return;
@@ -78,9 +92,10 @@ void MMU::SetByteAt (uint16_t Address, uint8_t Value) {
 		} else if (Address >= 0x6000 && Address < 0x8000) { // Switch mode above
 			if (Value == 0) {
 				SelectRAMBank = 0;
-				CurrentROMBank &= 0b00011111; // Clear the 2 bits to accommodate the change
+				CurrentRAMBank = 0;
 			} else {
 				SelectRAMBank = 1;
+				CurrentROMBank &= 0b00011111; // Clear the 2 bits to accommodate the change
 			}
 			return;
 		} else if (Address >= 0xA000 && Address < 0xC000) { // Write to External RAM
@@ -88,7 +103,14 @@ void MMU::SetByteAt (uint16_t Address, uint8_t Value) {
 				ExternalRAM [0x2000 * CurrentRAMBank + (Address - 0xA000)] = Value;
 			return;
 		}
-		
+	} else if (ROMType == 2) {
+		if (Address < 0x2000) { // Toggle External RAM
+			ExternalRAMEnabled = (Value == 0x0A); // TODO, Special case: "The least significant bit of the upper address byte must be '0' to enable/disable cart RAM."
+			return;
+		} else if (Address < 0x4000) {
+			CurrentROMBank = Value & 0xF; // TODO, Special case: "The least significant bit of the upper address byte must be '1' to select a ROM bank."
+			return;
+		}
 	} else if (ROMType == 3) {
 		if (Address < 0x2000) { // Toggle External RAM / RTC
 			ExternalRAMEnabled = (Value == 0x0A);

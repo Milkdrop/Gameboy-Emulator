@@ -48,6 +48,12 @@ void PPU::OAMSearch (uint8_t* Memory, uint8_t* IOMap) {
 	SpriteCount = QueueNumber;
 }
 
+void PPU::Render () {
+	SDL_UpdateTexture (MainTexture, NULL, PixelsReady, 2 * Width);
+	SDL_RenderCopy (MainRenderer, MainTexture, NULL, NULL);
+	SDL_RenderPresent (MainRenderer);
+}
+
 void PPU::Update (uint8_t* Memory, uint8_t* IOMap) {
 	uint16_t BGTable = 0x9800;
 	uint16_t WindowTable = 0x9800;
@@ -194,9 +200,6 @@ void PPU::Update (uint8_t* Memory, uint8_t* IOMap) {
 	CurrentY = (CurrentY + 1) % 154;
 	IOMap [0x44] = CurrentY; // Update current line that's being scanned
 	
-	if (CurrentY == 0) { // End of Frame, Time to actually draw the pixels
-		SDL_UpdateTexture (MainTexture, NULL, Pixels, 2 * Width);
-		SDL_RenderCopy (MainRenderer, MainTexture, NULL, NULL);
-		SDL_RenderPresent (MainRenderer);
-	}
+	if (CurrentY == 0) // End of Frame, Save the good pixels to be drawn at 60 Hz afterwards
+		memcpy (PixelsReady, Pixels, sizeof (Pixels));
 }
