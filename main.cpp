@@ -238,7 +238,7 @@ void CPULoop (CPU* cpu, MMU* mmu, PPU* ppu) {
 	uint8_t* IOMap = mmu->IOMap;
 	
 	// Time Events - Clock independent
-	Utils::StartTime = std::chrono::high_resolution_clock::now ();
+	auto StartTime = std::chrono::high_resolution_clock::now ();
 	uint64_t LastInputTime = 0;
 	uint64_t LastLoopTime = 0;
 	uint64_t LastDebugTime = 0; // To show info
@@ -263,7 +263,7 @@ void CPULoop (CPU* cpu, MMU* mmu, PPU* ppu) {
 
 	// Main Loop
 	while (!Quit) {
-		uint64_t CurrentTime = Utils::GetCurrentTime ();
+		uint64_t CurrentTime = GetCurrentTime (StartTime);
 		
 		// Throttle
 		if (CurrentTime - LastLoopTime <= 1000) { // Check if Host CPU is faster
@@ -275,8 +275,10 @@ void CPULoop (CPU* cpu, MMU* mmu, PPU* ppu) {
 				Throttle = 1;
 			
 			if (Throttle) {
-				Utils::NanoSleep (1000 - (CurrentTime - LastLoopTime));
-				LastLoopTime = Utils::GetCurrentTime ();
+				printf ("Started Sleeping at %lld\n", CurrentTime);
+				NanoSleep (1000 - (CurrentTime - LastLoopTime));
+				printf ("Woke up at %lld\n", CurrentTime);
+				LastLoopTime = GetCurrentTime (StartTime);
 				LastMSClock = cpu->ClockCount;
 			}
 		} else {
@@ -336,7 +338,7 @@ void CPULoop (CPU* cpu, MMU* mmu, PPU* ppu) {
 						Reset (mmu, cpu, ppu);
 						IOMap = mmu->IOMap;
 						
-						Utils::StartTime = std::chrono::high_resolution_clock::now ();
+						StartTime = std::chrono::high_resolution_clock::now ();
 						LastInputTime = 0;
 						LastLoopTime = 0;
 						LastDebugTime = 0;
