@@ -192,10 +192,8 @@ void AnalyzeROM (MMU* mmu) {
 
 // State modifications
 void SaveGame (MMU* mmu) {
-	if (mmu->ExternalRAMSize == 0) {
-		printf ("[WARN] ROM Doesn't have any External RAM to save!\n");
-	} else {
-		printf ("[INFO] Saving External ROM to %s\n", SaveFilename);
+	if (mmu->ExternalRAMSize != 0 && mmu->ROMBattery) {
+		printf ("[INFO] Saving External RAM (Savegame) to %s\n", SaveFilename);
 
 		FILE* Savefile = fopen (SaveFilename, "wb");
 		fwrite (mmu->ExternalRAM, 1, 0x2000 * mmu->ExternalRAMSize, Savefile);
@@ -247,7 +245,6 @@ void CPULoop (CPU* cpu, MMU* mmu, PPU* ppu) {
 	
 	// Input status
 	uint8_t PressDebug = 0;
-	uint8_t PressControlS = 0;
 	uint8_t PressControlR = 0;
 	uint8_t Quit = 0;
 	
@@ -282,8 +279,8 @@ void CPULoop (CPU* cpu, MMU* mmu, PPU* ppu) {
 				LastMSClock = cpu->ClockCount;
 				
 				uint32_t MicroSleepOvershoot = (LastLoopTime - CurrentTime) - usToSleep; // How much time it actually slept - time it had to sleep
-				ClockCompensation = ((float) ClocksPerSec / 1000000) * MicroSleepOvershoot;
-				
+				ClockCompensation = ((ClocksPerSec / 1000000) * MicroSleepOvershoot) >> 2; // Dont use float, since time calculations are already inexact. Having a precise calculation here would result in a faster-than-GB CPU,
+																						   // also divide by 4, to accomodate extra inaccuracies
 				if (MicroSleepOvershoot > 4000)
 					printf ("[WARN] MicroSleep Overshoot is over 4ms (%d us), CPU can't catch up!\n", MicroSleepOvershoot);
 			}
@@ -310,6 +307,7 @@ void CPULoop (CPU* cpu, MMU* mmu, PPU* ppu) {
 			
 			while (SDL_PollEvent(&ev)) {
 				if (ev.type == SDL_QUIT) {
+					SaveGame (mmu); // Save game on poweroff
 					Quit = 1;
 				}
 			}
@@ -328,14 +326,6 @@ void CPULoop (CPU* cpu, MMU* mmu, PPU* ppu) {
 			}
 			
 			if ((Keyboard [SDL_SCANCODE_LCTRL] || Keyboard [SDL_SCANCODE_RCTRL])) { // Save external RAM
-				if (Keyboard [SDL_SCANCODE_S]) { // Save game
-					if (PressControlS == 0) {
-						PressControlS = 1;
-						SaveGame (mmu);
-					}
-				} else
-					PressControlS = 0;
-				
 				if (Keyboard [SDL_SCANCODE_R]) { // Reset
 					if (PressControlR == 0) {
 						PressControlR = 1;
@@ -453,7 +443,7 @@ void CPULoop (CPU* cpu, MMU* mmu, PPU* ppu) {
 				LastTimerClock = cpu->ClockCount;
 				IOMap [0x05]++; // TIMECNT
 				
-				if (IOMap [0x05] == 1) { // 1 clock delay
+				if (IOMap [0x05] == 0) {
 					IOMap [0x05] = IOMap [0x06]; // TIMEMOD
 					cpu->Interrupt (2);
 				}
@@ -482,10 +472,10 @@ void CPULoop (CPU* cpu, MMU* mmu, PPU* ppu) {
 			
 		if (GetBit (IOMap [0x00], 5) == 0) { // Buttons
 			IOMap [0x00] |= 0b00001111; // 1 - Not Pressed
-			if (Keyboard [SDL_SCANCODE_A])
+			if (Keyboard [SDL_SCANCODE_Z]) // A
 				SetBit (IOMap [0x00], 0, 0);
 			
-			if (Keyboard [SDL_SCANCODE_B])
+			if (Keyboard [SDL_SCANCODE_X]) // B
 				SetBit (IOMap [0x00], 1, 0);
 			
 			if (Keyboard [SDL_SCANCODE_LSHIFT]) // SELECT
