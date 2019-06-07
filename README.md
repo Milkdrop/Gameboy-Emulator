@@ -6,10 +6,16 @@ A simple GameBoy Emulator written in C++ and SDL. All main features are implemen
 </p>
 
 ## To Run:
-
 Make sure you compile the source using `make`. Afterwards, simply run the emulator using:
 
 `./main GameROM.gb`
+
+## Controls:
+- **Enter:** `START`
+- **Left Shift:** `SELECT`
+- **A:** `A`
+- **S:** `B`
+- **Arrow Keys:** `Joypad`
 
 ## Examples of games:
 
