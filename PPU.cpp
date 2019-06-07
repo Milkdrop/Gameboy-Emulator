@@ -16,8 +16,6 @@ PPU::PPU (const char* Title, const uint16_t _PixelSize) {
 	MainTexture = SDL_CreateTexture (MainRenderer, SDL_PIXELFORMAT_ARGB4444, SDL_TEXTUREACCESS_STREAMING, Width, Height);
 	SDL_SetRenderDrawColor(MainRenderer, 0x00, 0x00, 0x00, 0x00);
 	SDL_RenderClear(MainRenderer);
-	
-	SDL_RenderSetLogicalSize (MainRenderer, Width, Height);
 }
 
 PPU::~PPU () {

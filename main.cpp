@@ -268,7 +268,7 @@ void CPULoop (CPU* cpu, MMU* mmu, PPU* ppu) {
 			
 			if (cpu->ClockCount - LastMSClock >= (ClocksPerMS + ClockCompensation) << 2 && !Keyboard [SDL_SCANCODE_SPACE]) // Press space to disable throttling
 				Throttle = 1;
-			else if (cpu->ClockCount - LastMSClock >= ClocksPerMS + ClockCompensation && Keyboard [SDL_SCANCODE_BACKSPACE]) // x4 slow motion
+			else if (cpu->ClockCount - LastMSClock >= ClocksPerMS + (ClockCompensation >> 2) && Keyboard [SDL_SCANCODE_BACKSPACE]) // x4 slow motion
 				Throttle = 1;
 			
 			if (Throttle) {
