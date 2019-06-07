@@ -208,7 +208,7 @@ void SaveState (uint8_t ID) {
 	snprintf (StateName + strlen(StateName), 4, "%d", ID);
 	
 	printf ("[INFO] Saving State %d to %s\n", ID, StateName);
-	// TODO
+	// TODO State saving
 }
 
 void Reset (MMU* &mmu, CPU* &cpu, PPU* &ppu) {
@@ -222,9 +222,8 @@ void Reset (MMU* &mmu, CPU* &cpu, PPU* &ppu) {
 	LoadROM (mmu);
 }
 
-/* IO TODO
-FF02
-FF04
+/* TODO Serial+Sound
+FF02 - Serial
 FF10 -> FF26 // Sound
 */
 
@@ -472,10 +471,10 @@ void CPULoop (CPU* cpu, MMU* mmu, PPU* ppu) {
 			
 		if (GetBit (IOMap [0x00], 5) == 0) { // Buttons
 			IOMap [0x00] |= 0b00001111; // 1 - Not Pressed
-			if (Keyboard [SDL_SCANCODE_Z]) // A
+			if (Keyboard [SDL_SCANCODE_A]) // A
 				SetBit (IOMap [0x00], 0, 0);
 			
-			if (Keyboard [SDL_SCANCODE_X]) // B
+			if (Keyboard [SDL_SCANCODE_S] || Keyboard [SDL_SCANCODE_ESCAPE]) // B
 				SetBit (IOMap [0x00], 1, 0);
 			
 			if (Keyboard [SDL_SCANCODE_LSHIFT]) // SELECT

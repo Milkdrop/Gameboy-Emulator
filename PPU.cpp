@@ -65,10 +65,6 @@ void PPU::Update (uint8_t* Memory, uint8_t* IOMap) {
 		
 	uint8_t BGAddressingMode = GetBit (IOMap [0x40], 4); // 0 - Signed (0x8000), 1 - Unsigned (0x9000)
 	
-	/* LCDC TODO:
-		0xFF40: bits 5
-	*/
-	
 	if (GetBit (IOMap [0x40], 0)) { // BG Enabled
 		// Set BG Palette
 		BGPalette [0] = GetBit (IOMap [0x47], 0) | (GetBit (IOMap [0x47], 1) << 1);

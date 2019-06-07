@@ -2,6 +2,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <cstring>
+#include <time.h>
 #ifndef MMU_H
 #define MMU_H
 
@@ -43,7 +44,7 @@ class MMU {
 		uint8_t SelectRAMBank = 0;
 		uint8_t RTCRegister [0x0D];
 		uint8_t ExternalRAMSize = 0;
-		
+	
 		// VRAM Status
 		uint8_t CurrentPPUMode = 1;
 	

@@ -20,7 +20,7 @@ uint8_t MMU::GetByteAt (uint16_t Address) {
 		}
 	}
 	
-	if (ROMType == 1) {
+	if (ROMType == 1 || ROMType == 2) {
 		if (ExternalRAMEnabled) {
 			if (Address >= 0xA000 && Address < 0xC000) // Read from External RAM
 				return ExternalRAM [0x2000 * CurrentRAMBank + (Address - 0xA000)];
@@ -29,8 +29,9 @@ uint8_t MMU::GetByteAt (uint16_t Address) {
 		if (Address >= 0xA000 && Address < 0xC000) { // Read from External RAM / RTC
 			if (CurrentRAMBank <= 0x07)
 				return ExternalRAM [0x2000 * CurrentRAMBank + (Address - 0xA000)];
-			else
+			else { // TODO RTC
 				return RTCRegister [CurrentRAMBank];
+			}
 		}
 	}
 	
@@ -130,8 +131,7 @@ void MMU::SetByteAt (uint16_t Address, uint8_t Value) {
 			} else
 				RTCRegister [CurrentRAMBank] = Value;
 			return;
-		} else if (Address >= 0x6000 && Address < 0x8000) {
-			printf ("Latch RTC\n");
+		} else if (Address >= 0x6000 && Address < 0x8000) { // RTC Latch
 			return;
 		}
 	}
