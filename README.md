@@ -16,6 +16,8 @@ Make sure you compile the source using `make`. Afterwards, simply run the emulat
 - **A:** `A`
 - **S:** `B`
 - **Arrow Keys:** `Joypad`
+- You can hold **Space** to go to the maximum speed supported by the emulator
+- You can hold **Backspace** to go 4x slower than the gameboy's original speed
 
 ## Examples of games:
 
